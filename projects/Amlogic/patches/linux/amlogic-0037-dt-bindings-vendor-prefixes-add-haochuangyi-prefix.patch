@@ -1,0 +1,29 @@
+From 63fb25f0ec6b217451ba87e25d83d044369d5908 Mon Sep 17 00:00:00 2001
+From: Christian Hewitt <christianshewitt@gmail.com>
+Date: Tue, 12 Jan 2021 17:24:07 +0000
+Subject: [PATCH 37/54] dt-bindings: vendor-prefixes: add haochuangyi prefix
+
+Shenzhen Haochuangyi Technology Co.,Ltd are a manufcaturer of Android
+Set-Top Box devices.
+
+Signed-off-by: Christian Hewitt <christianshewitt@gmail.com>
+---
+ Documentation/devicetree/bindings/vendor-prefixes.yaml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/vendor-prefixes.yaml b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+index 07fb0d25fc15..b84788aecfbf 100644
+--- a/Documentation/devicetree/bindings/vendor-prefixes.yaml
++++ b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+@@ -467,6 +467,8 @@ patternProperties:
+     deprecated: true
+   "^hannstar,.*":
+     description: HannStar Display Corporation
++  "^haochuangyi,.*":
++    description: Shenzhen Haochuangyi Technology Co.,Ltd
+   "^haoyu,.*":
+     description: Haoyu Microelectronic Co. Ltd.
+   "^hardkernel,.*":
+-- 
+2.17.1
+
