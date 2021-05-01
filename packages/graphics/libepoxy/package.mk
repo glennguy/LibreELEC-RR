@@ -8,8 +8,8 @@
 # in Xorg.log
 
 PKG_NAME="libepoxy"
-PKG_VERSION="1.5.5"
-PKG_SHA256="5d80a43a6524a1ebdd0c9c5d5105295546a0794681853c636a0c70f8f9c658ce"
+PKG_VERSION="1.5.8"
+PKG_SHA256="0cd80cb040b75cbe77fadd45c48282ebab82d845c597ce11ee5e8cb9c1efeabb"
 PKG_LICENSE="GPL"
 PKG_SITE="https://github.com/anholt/libepoxy"
 PKG_URL="https://github.com/anholt/libepoxy/archive/${PKG_VERSION}.tar.gz"
