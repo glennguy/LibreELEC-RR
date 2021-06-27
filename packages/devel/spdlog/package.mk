@@ -2,11 +2,14 @@
 # Copyright (C) 2017-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="spdlog"
-PKG_VERSION="1.8.5"
-PKG_SHA256="944d0bd7c763ac721398dca2bb0f3b5ed16f67cef36810ede5061f35a543b4b8"
+#PKG_VERSION="1.8.5"
+#PKG_SHA256="944d0bd7c763ac721398dca2bb0f3b5ed16f67cef36810ede5061f35a543b4b8"
+PKG_VERSION="7560cacb3f14b57e4106e9efa324d0f0cee2d56a" # libfmt 8 broken spdlog
+PKG_SHA256=""
 PKG_LICENSE="MIT"
 PKG_SITE="https://github.com/gabime/spdlog"
-PKG_URL="https://github.com/gabime/spdlog/archive/v${PKG_VERSION}.tar.gz"
+#PKG_URL="https://github.com/gabime/spdlog/archive/v${PKG_VERSION}.tar.gz"
+PKG_URL="https://github.com/gabime/spdlog/archive/${PKG_VERSION}.tar.gz"
 PKG_DEPENDS_TARGET="toolchain libfmt"
 PKG_LONGDESC="Very fast, header only, C++ logging library."
 PKG_TOOLCHAIN="cmake"
