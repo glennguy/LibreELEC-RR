@@ -52,9 +52,10 @@ diff --git a/drivers/net/wireless/realtek/rtw88/debug.h b/drivers/net/wireless/r
 index a0f36f29b4a618..8e2183e56d4488 100644
 --- a/drivers/net/wireless/realtek/rtw88/debug.h
 +++ b/drivers/net/wireless/realtek/rtw88/debug.h
-@@ -20,5 +20,6 @@ enum rtw_debug_mask {
+@@ -21,5 +21,6 @@ enum rtw_debug_mask {
  	RTW_DBG_BF		= 0x00000800,
  	RTW_DBG_WOW		= 0x00001000,
+ 	RTW_DBG_CFO		= 0x00002000,
 +	RTW_DBG_SDIO		= 0x00004000,
  
  	RTW_DBG_ALL		= 0xffffffff
