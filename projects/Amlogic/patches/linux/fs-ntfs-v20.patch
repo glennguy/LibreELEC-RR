@@ -18711,7 +18711,7 @@ new file mode 100644
 index 000000000000..5ce203212c8c
 --- /dev/null
 +++ b/fs/ntfs3/file.c
-@@ -0,0 +1,1133 @@
+@@ -0,0 +1,1132 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + *
@@ -19627,10 +19627,9 @@ index 000000000000..5ce203212c8c
 +			size_t cp, tail = PAGE_SIZE - off;
 +
 +			page = pages[ip];
-+			cp = iov_iter_copy_from_user_atomic(page, from, off,
-+							    min(tail, bytes));
++			cp = copy_page_from_iter_atomic(page, from, off,
++							min(tail, bytes));
 +			flush_dcache_page(page);
-+			iov_iter_advance(from, cp);
 +			copied += cp;
 +			bytes -= cp;
 +			if (!bytes || !cp)
