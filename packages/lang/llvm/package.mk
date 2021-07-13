@@ -34,6 +34,7 @@ PKG_CMAKE_OPTS_COMMON="-DCMAKE_BUILD_TYPE=MinSizeRel \
                        -DLLVM_ENABLE_ASSERTIONS=OFF \
                        -DLLVM_ENABLE_WERROR=OFF \
                        -DLLVM_ENABLE_ZLIB=ON \
+                       -DLLVM_ENABLE_LIBXML2=OFF \
                        -DLLVM_BUILD_LLVM_DYLIB=ON \
                        -DLLVM_LINK_LLVM_DYLIB=ON \
                        -DLLVM_OPTIMIZED_TABLEGEN=ON \
@@ -48,11 +49,16 @@ pre_configure_host() {
 }
 
 pre_configure_target() {
-  PKG_CMAKE_OPTS_TARGET="${PKG_CMAKE_OPTS_COMMON} \
+  PKG_CMAKE_OPTS_TARGET=(${PKG_CMAKE_OPTS_COMMON} \
                          -DCMAKE_C_FLAGS="${CFLAGS}" \
                          -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
                          -DLLVM_TARGET_ARCH="${TARGET_ARCH}" \
-                         -DLLVM_TABLEGEN=${TOOLCHAIN}/bin/llvm-tblgen"
+                         -DLLVM_TABLEGEN=${TOOLCHAIN}/bin/llvm-tblgen)
+}
+
+configure_target() {
+  echo "Executing (target): cmake ${CMAKE_GENERATOR_NINJA} ${TARGET_CMAKE_OPTS} "${PKG_CMAKE_OPTS_TARGET[@]}" $(dirname ${PKG_CMAKE_SCRIPT})" | tr -s " "
+  cmake ${CMAKE_GENERATOR_NINJA} ${TARGET_CMAKE_OPTS} "${PKG_CMAKE_OPTS_TARGET[@]}" $(dirname ${PKG_CMAKE_SCRIPT})
 }
 
 make_host() {
