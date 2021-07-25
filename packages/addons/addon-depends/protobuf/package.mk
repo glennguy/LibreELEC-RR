@@ -2,8 +2,8 @@
 # Copyright (C) 2016-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="protobuf"
-PKG_VERSION="3.16.0"
-PKG_SHA256="321923ba2189ef7203ee9115cb41340c6049d8256097be6ca49f0771bf6b7035"
+PKG_VERSION="3.17.3"
+PKG_SHA256="51cec99f108b83422b7af1170afd7aeb2dd77d2bcbb7b6bad1f92509e9ccf8cb"
 PKG_LICENSE="OSS"
 PKG_SITE="https://developers.google.com/protocol-buffers/"
 PKG_URL="https://github.com/google/${PKG_NAME}/releases/download/v${PKG_VERSION}/${PKG_NAME}-cpp-${PKG_VERSION}.tar.gz"
