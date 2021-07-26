@@ -3,8 +3,8 @@
 # Copyright (C) 2017-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="ccid"
-PKG_VERSION="1.4.34"
-PKG_SHA256="e6f7645b59a9a2844eb4b1a7eff512960d7f04a4654af02f7fd2f8aded5db40a"
+PKG_VERSION="1.4.35"
+PKG_SHA256="7c3e2a7924edda722189ca57c8d1cffa51e7f9354a23e81aecd9d1ae8d9710ca"
 PKG_LICENSE="LGPL"
 PKG_SITE="https://ccid.apdu.fr"
 PKG_URL="https://ccid.apdu.fr/files/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
