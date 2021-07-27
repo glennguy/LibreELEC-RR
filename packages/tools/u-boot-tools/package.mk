@@ -2,8 +2,8 @@
 # Copyright (C) 2019-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="u-boot-tools"
-PKG_VERSION="2021.07"
-PKG_SHA256="312b7eeae44581d1362c3a3f02c28d806647756c82ba8c72241c7cdbe68ba77e"
+PKG_VERSION="2021.10-rc1"
+PKG_SHA256="19fedf084b709eda6fa88104ae9d7a9b5c0e75e828a98406238f085109c2597b"
 PKG_LICENSE="GPL"
 PKG_SITE="https://www.denx.de/wiki/U-Boot"
 PKG_URL="http://ftp.denx.de/pub/u-boot/u-boot-${PKG_VERSION}.tar.bz2"
