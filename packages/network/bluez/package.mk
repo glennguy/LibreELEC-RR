@@ -23,7 +23,7 @@ BLUEZ_CONFIG+=" --enable-monitor --enable-test"
 
 PKG_CONFIGURE_OPTS_TARGET="--disable-dependency-tracking \
                            --disable-silent-rules \
-                           --disable-library \
+                           --enable-library \
                            --enable-udev \
                            --disable-cups \
                            --disable-manpages \
@@ -65,6 +65,9 @@ post_makeinstall_target() {
 
   # bluez looks in /etc/firmware/
     ln -sf /usr/lib/firmware ${INSTALL}/etc/firmware
+
+   mkdir -p ${SYSROOT_PREFIX}/usr/lib/pkgconfig
+     cp lib/bluez.pc ${SYSROOT_PREFIX}/usr/lib/pkgconfig
 }
 
 post_install() {
