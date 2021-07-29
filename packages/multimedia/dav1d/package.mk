@@ -14,5 +14,6 @@ if [ "${TARGET_ARCH}" = "x86_64" ]; then
   PKG_DEPENDS_TARGET+=" nasm:host"
 fi
 
-PKG_MESON_OPTS_TARGET="-Denable_tools=false \
-                       -Denable_tests=false"
+PKG_MESON_OPTS_TARGET="-Denable_examples=false \
+                       -Denable_tests=false \
+                       -Denable_tools=false"
