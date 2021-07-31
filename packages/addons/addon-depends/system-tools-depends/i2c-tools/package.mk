@@ -37,6 +37,7 @@ makeinstall_target() {
   make  EXTRA="py-smbus" \
         DESTDIR=${INSTALL} \
         PREFIX="/usr" \
+        prefix="/usr" \
         PYTHON=${TOOLCHAIN}/bin/python3 \
         install
 }
