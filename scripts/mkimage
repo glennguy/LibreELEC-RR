@@ -18,11 +18,11 @@ if [ -z "${SYSTEM_SIZE}" -o -z "${SYSTEM_PART_START}" ]; then
   exit 1
 fi
 
-#if [ "${BOOTLOADER}" = "syslinux" ]; then
+if [ "${BOOTLOADER}" = "syslinux" ]; then
   DISK_LABEL=gpt
-#else
-#  DISK_LABEL=msdos
-#fi
+else
+  DISK_LABEL=msdos
+fi
 
 STORAGE_SIZE=32 # STORAGE_SIZE must be >= 32 !
 
@@ -62,19 +62,12 @@ echo "image: creating ${DISK_LABEL} partition table..."
 parted -s "${DISK}" mklabel ${DISK_LABEL}
 sync
 
-parted -s "${DISK}" -a min unit s mkpart uboot    fat32  16384  24575
-parted -s "${DISK}" -a min unit s mkpart misc     fat32  24576  32767
-parted -s "${DISK}" -a min unit s mkpart boot     fat32  32768  98303
-parted -s "${DISK}" -a min unit s mkpart recovery fat32  98304 163839
-parted -s "${DISK}" -a min unit s mkpart backup   fat32 163840 229375
-
-
 # create part1
 echo "image: creating part1..."
 SYSTEM_PART_END=$(( ${SYSTEM_PART_START} + (${SYSTEM_SIZE} * 1024 * 1024 / 512) - 1 ))
 if [ "${DISK_LABEL}" = "gpt" ]; then
   parted -s "${DISK}" -a min unit s mkpart system fat32 ${SYSTEM_PART_START} ${SYSTEM_PART_END}
-  parted -s "${DISK}" set 6 legacy_boot on
+  parted -s "${DISK}" set 1 legacy_boot on
 else
   parted -s "${DISK}" -a min unit s mkpart primary fat32 ${SYSTEM_PART_START} ${SYSTEM_PART_END}
   parted -s "${DISK}" set 1 boot on
@@ -92,14 +85,14 @@ else
 fi
 sync
 
-#if [ "${BOOTLOADER}" = "syslinux" ]; then
+if [ "${BOOTLOADER}" = "syslinux" ]; then
   # write mbr
   echo "image: writing mbr..."
   MBR="${TOOLCHAIN}/share/syslinux/gptmbr.bin"
   if [ -n "${MBR}" ]; then
     dd bs=440 count=1 conv=fsync,notrunc if="${MBR}" of="${DISK}" >"${SAVE_ERROR}" 2>&1 || show_error
   fi
-#fi
+fi
 
 # create filesystem on part1
 echo "image: creating filesystem on part1..."
