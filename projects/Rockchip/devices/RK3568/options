@@ -36,3 +36,6 @@
 
   # additional packages
     ADDITIONAL_PACKAGES+=" pciutils"
+
+  # Start boot partition at 112MiB, same as https://github.com/rockchip-linux/build images
+    SYSTEM_PART_START=229376
