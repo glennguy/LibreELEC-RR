@@ -3,8 +3,8 @@
 # Copyright (C) 2017-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="ncurses"
-PKG_VERSION="6.2-20210724"
-PKG_SHA256="26ba18873bd57711770217503cc9a35a33631fcb69a1fab932caf1fa7209e2e0"
+PKG_VERSION="6.2-20210731"
+PKG_SHA256="619bf314d0a7279dd46543c6351bd382a6175ad47263a30b1f981132680ee5ea"
 PKG_LICENSE="MIT"
 PKG_SITE="https://invisible-island.net/ncurses/announce.html"
 PKG_URL="https://invisible-mirror.net/archives/ncurses/current/ncurses-${PKG_VERSION}.tgz"
