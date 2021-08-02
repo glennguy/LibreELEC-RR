@@ -19,3 +19,8 @@ PKG_CONFIGURE_OPTS_TARGET="--enable-static \
                            --disable-jasper \
                            --enable-lcms \
                            --disable-examples"
+
+pre_configure_target() {
+  cd ..
+  autoreconf -f
+}
