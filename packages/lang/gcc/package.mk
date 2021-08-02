@@ -14,6 +14,15 @@ PKG_DEPENDS_HOST="ccache:host autoconf:host binutils:host gmp:host mpfr:host mpc
 PKG_DEPENDS_INIT="toolchain"
 PKG_LONGDESC="This package contains the GNU Compiler Collection."
 
+case ${TARGET_ARCH} in
+  riscv64)
+    OPTS_LIBATOMIC="--enable-libatomic"
+    ;;
+  *)
+    OPTS_LIBATOMIC="--disable-libatomic"
+    ;;
+esac
+
 GCC_COMMON_CONFIGURE_OPTS="--target=${TARGET_NAME} \
                            --with-sysroot=${SYSROOT_PREFIX} \
                            --with-gmp=${TOOLCHAIN} \
@@ -35,7 +44,6 @@ GCC_COMMON_CONFIGURE_OPTS="--target=${TARGET_NAME} \
                            --without-cloog \
                            --disable-libada \
                            --disable-libmudflap \
-                           --disable-libatomic \
                            --disable-libitm \
                            --disable-libquadmath \
                            --disable-libgomp \
@@ -47,6 +55,7 @@ PKG_CONFIGURE_OPTS_BOOTSTRAP="${GCC_COMMON_CONFIGURE_OPTS} \
                               --enable-languages=c \
                               --disable-libsanitizer \
                               --enable-cloog-backend=isl \
+                              --disable-libatomic \
                               --disable-shared \
                               --disable-threads \
                               --without-headers \
@@ -56,6 +65,7 @@ PKG_CONFIGURE_OPTS_BOOTSTRAP="${GCC_COMMON_CONFIGURE_OPTS} \
 
 PKG_CONFIGURE_OPTS_HOST="${GCC_COMMON_CONFIGURE_OPTS} \
                          --enable-languages=c,c++ \
+                         ${OPTS_LIBATOMIC} \
                          --enable-decimal-float \
                          --enable-tls \
                          --enable-shared \
