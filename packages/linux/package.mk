@@ -37,7 +37,10 @@ esac
 
 PKG_KERNEL_CFG_FILE=$(kernel_config_path) || die
 
-if [ -n "${KERNEL_TOOLCHAIN}" ]; then
+if [ -n "${KERNEL_TOOLCHAIN}" -a "$TARGET_KERNEL_ARCH" = "riscv" ]; then
+  PKG_DEPENDS_HOST+=" gcc-${KERNEL_TOOLCHAIN}:host"
+  PKG_DEPENDS_TARGET+=" gcc-${KERNEL_TOOLCHAIN}:host"
+elif [ -n "${KERNEL_TOOLCHAIN}" ]; then
   PKG_DEPENDS_HOST+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   HEADERS_ARCH=${TARGET_ARCH}
