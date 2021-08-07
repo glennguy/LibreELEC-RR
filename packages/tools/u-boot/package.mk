@@ -11,7 +11,11 @@ PKG_LONGDESC="Das U-Boot is a cross-platform bootloader for embedded systems."
 
 PKG_STAMP="${UBOOT_SYSTEM} ${UBOOT_TARGET}"
 
-[ -n "${KERNEL_TOOLCHAIN}" ] && PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
+if [ -n "${KERNEL_TOOLCHAIN}" -a "${TARGET_KERNEL_ARCH}" = "riscv" ]; then
+  PKG_DEPENDS_TARGET+=" gcc-${KERNEL_TOOLCHAIN}:host"
+elif [ -n "${KERNEL_TOOLCHAIN}" ]; then
+  PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
+fi
 
 if [ -n "${UBOOT_FIRMWARE}" ]; then
   PKG_DEPENDS_TARGET+=" ${UBOOT_FIRMWARE}"
