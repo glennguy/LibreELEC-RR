@@ -27,15 +27,15 @@ PKG_NEED_UNPACK="${PROJECT_DIR}/${PROJECT}/bootloader"
 
 case "${PROJECT}" in
   Amlogic)
-    PKG_VERSION="2021.10-rc1"
-    PKG_SHA256="19fedf084b709eda6fa88104ae9d7a9b5c0e75e828a98406238f085109c2597b"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
     #PKG_URL="https://github.com/chewitt/u-boot/archive/${PKG_VERSION}.tar.gz"
     PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
     PKG_PATCH_DIRS="amlogic"
     ;;
   Rockchip)
-    PKG_VERSION="2021.10-rc1"
-    PKG_SHA256="19fedf084b709eda6fa88104ae9d7a9b5c0e75e828a98406238f085109c2597b"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
     PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
     #PKG_VERSION="8659d08d2b589693d121c1298484e861b7dafc4f"
     #PKG_SHA256="3f9f2bbd0c28be6d7d6eb909823fee5728da023aca0ce37aef3c8f67d1179ec1"
@@ -43,8 +43,8 @@ case "${PROJECT}" in
     PKG_PATCH_DIRS="rockchip"
     ;;
   *)
-    PKG_VERSION="2021.10-rc1"
-    PKG_SHA256="19fedf084b709eda6fa88104ae9d7a9b5c0e75e828a98406238f085109c2597b"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
     PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
     PKG_PATCH_DIRS="default"
     ;;
