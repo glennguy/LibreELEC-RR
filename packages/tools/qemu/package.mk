@@ -2,8 +2,8 @@
 # Copyright (C) 2016-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="qemu"
-PKG_VERSION="6.1.0-rc3"
-PKG_SHA256="ceb2a70855d7c4250b746c0899f40e7a526ecd1128830c1899fa69e7e437ca15"
+PKG_VERSION="6.1.0-rc4"
+PKG_SHA256="2c574c63d7a8d9d929975f29e990dddaacebb3e6bbb3194a9066d4bdd509b000"
 PKG_LICENSE="GPL"
 PKG_SITE="https://www.qemu.org"
 PKG_URL="https://download.qemu.org/qemu-${PKG_VERSION}.tar.xz"
