@@ -3,11 +3,11 @@
 # Copyright (C) 2016-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="pango"
-PKG_VERSION="1.48.8"
-PKG_SHA256="009d9d830ecbe11911d6637e48eec1c51390d3d12eb286035ef7c641f3c87410"
+PKG_VERSION="1.48.9"
+PKG_SHA256="a913657d3fe5aa04c03958a3b5d3fc859e891b75cd81b873a819330f6c0872aa"
 PKG_LICENSE="GPL"
 PKG_SITE="http://www.pango.org/"
-PKG_URL="https://ftp.gnome.org/pub/gnome/sources/pango/${PKG_VERSION:0:4}/pango-${PKG_VERSION}.tar.xz"
+PKG_URL="https://download.gnome.org/sources/pango/${PKG_VERSION:0:4}/pango-${PKG_VERSION}.tar.xz"
 PKG_DEPENDS_TARGET="toolchain cairo freetype fontconfig fribidi glib harfbuzz libX11 libXft"
 PKG_DEPENDS_CONFIG="libXft cairo"
 PKG_LONGDESC="The Pango library for layout and rendering of internationalized text."
