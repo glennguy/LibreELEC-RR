@@ -2,8 +2,8 @@
 # Copyright (C) 2019-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="nlohmann-json"
-PKG_VERSION="3.10.0"
-PKG_SHA256="eb8b07806efa5f95b349766ccc7a8ec2348f3b2ee9975ad879259a371aea8084"
+PKG_VERSION="3.10.1"
+PKG_SHA256="c35d8c867f7cde3f6100c3f5dbe999667f77f075cd802bbd37080bd63ceb94c4"
 PKG_LICENSE="MIT"
 PKG_SITE="https://nlohmann.github.io/json/"
 PKG_URL="https://github.com/nlohmann/json/archive/v${PKG_VERSION}.tar.gz"
