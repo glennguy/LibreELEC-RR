@@ -16,8 +16,8 @@ PKG_PATCH_DIRS="${LINUX}"
 
 case "${LINUX}" in
   amlogic)
-    PKG_VERSION="6cc049b8e0d05e1519d71afcf2d40d3aa5a48366" # 5.11.10
-    PKG_SHA256="d5f4a33af53ef0b22049366b2ae2c30a9bf5741dce7d1d2ed6e499c1d9d31c20"
+    PKG_VERSION="c500bee1c5b2f1d59b1081ac879d73268ab0ff17" # 5.14-rc4
+    PKG_SHA256="946261c480c281e4df5382682c0cdcf4bb77a8e4ed522d5f32ab11c5af48f166"
     PKG_URL="https://github.com/torvalds/linux/archive/${PKG_VERSION}.tar.gz"
     PKG_SOURCE_NAME="linux-${LINUX}-${PKG_VERSION}.tar.gz"
     ;;
@@ -28,8 +28,8 @@ case "${LINUX}" in
     PKG_SOURCE_NAME="linux-${LINUX}-${PKG_VERSION}.tar.gz"
     ;;
   *)
-    PKG_VERSION="5.10.61"
-    PKG_SHA256="82eae38cc5cd11dd6aaac91c02ff0d006c7bafd6d4cf5c6a791930820a3a91d1"
+    PKG_VERSION="5.14"
+    PKG_SHA256="7e068b5e0d26a62b10e5320b25dce57588cbbc6f781c090442138c9c9c3271b2"
     PKG_URL="https://www.kernel.org/pub/linux/kernel/v5.x/${PKG_NAME}-${PKG_VERSION}.tar.xz"
     PKG_PATCH_DIRS="default"
     ;;
@@ -37,11 +37,10 @@ esac
 
 PKG_KERNEL_CFG_FILE=$(kernel_config_path) || die
 
-if listcontains "${UBOOT_FIRMWARE}" "crust"; then
-  PKG_PATCH_DIRS+=" crust"
-fi
-
-if [ -n "${KERNEL_TOOLCHAIN}" ]; then
+if [ -n "${KERNEL_TOOLCHAIN}" -a "$TARGET_KERNEL_ARCH" = "riscv" ]; then
+  PKG_DEPENDS_HOST+=" gcc-${KERNEL_TOOLCHAIN}:host"
+  PKG_DEPENDS_TARGET+=" gcc-${KERNEL_TOOLCHAIN}:host"
+elif [ -n "${KERNEL_TOOLCHAIN}" ]; then
   PKG_DEPENDS_HOST+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   HEADERS_ARCH=${TARGET_ARCH}
@@ -82,14 +81,7 @@ post_patch() {
 }
 
 make_host() {
-  make \
-    ARCH=${HEADERS_ARCH:-${TARGET_KERNEL_ARCH}} \
-    HOSTCC="${TOOLCHAIN}/bin/host-gcc" \
-    HOSTCXX="${TOOLCHAIN}/bin/host-g++" \
-    HOSTCFLAGS="${HOST_CFLAGS}" \
-    HOSTCXXFLAGS="${HOST_CXXFLAGS}" \
-    HOSTLDFLAGS="${HOST_LDFLAGS}" \
-    headers_check
+  :
 }
 
 makeinstall_host() {
@@ -180,6 +172,34 @@ pre_make_target() {
     ${PKG_BUILD}/scripts/config --set-str CONFIG_EXTRA_FIRMWARE_DIR "external-firmware"
   fi
 
+  if [ -f "${DISTRO_DIR}/${DISTRO}/required_kernel_options" ]; then
+    while read OPTION; do
+      [ -z "$OPTION" -o -n "$(echo "$OPTION" | grep '^#')" ] && continue
+
+      if [ "$($PKG_BUILD/scripts/config --state ${OPTION%%=*})" != "${OPTION##*=}" ]; then
+        MISSING_OPTIONS+="\t$OPTION\n"
+      fi
+    done < ${DISTRO_DIR}/${DISTRO}/required_kernel_options
+
+    if [ -n "$MISSING_OPTIONS" ]; then
+      die "LINUX: required kernel options not enabled: \n${MISSING_OPTIONS%%}\nPlease run ./scripts/check_kernel_config"
+    fi
+  fi
+
+  if [ -f "${DISTRO_DIR}/${DISTRO}/optional_kernel_options" ]; then
+    while read OPTION; do
+      [ -z "$OPTION" -o -n "$(echo "$OPTION" | grep '^#')" ] && continue
+
+      if [ "$($PKG_BUILD/scripts/config --state ${OPTION%%=*})" != "${OPTION##*=}" ]; then
+        MISSING_OPTIONS+="\t$OPTION\n"
+      fi
+    done < ${DISTRO_DIR}/${DISTRO}/optional_kernel_options
+
+    if [ -n "$MISSING_OPTIONS" ]; then
+      echo -e "LINUX: optional kernel options not enabled: \n${MISSING_OPTIONS%%}\nPlease run ./scripts/check_kernel_config"
+    fi
+  fi
+
   kernel_make oldconfig
 
   if [ -f "${DISTRO_DIR}/${DISTRO}/kernel_options" ]; then
@@ -221,6 +241,9 @@ make_target() {
       case "${TARGET_ARCH}" in
         x86_64)
           PERF_BUILD_ARGS="ARCH=x86"
+          ;;
+        riscv64)
+          PERF_BUILD_ARGS="ARCH=riscv"
           ;;
         aarch64)
           PERF_BUILD_ARGS="ARCH=arm64"

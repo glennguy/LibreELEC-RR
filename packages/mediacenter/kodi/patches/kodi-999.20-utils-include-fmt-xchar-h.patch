@@ -1,0 +1,29 @@
+From c8fa9e3c2fe296fea6002f344774ce1cfacc48c8 Mon Sep 17 00:00:00 2001
+From: Craig Andrews <candrews@integralblue.com>
+Date: Wed, 23 Jun 2021 21:05:03 -0400
+Subject: [PATCH] [utils] include fmt/xchar.h
+
+fmt 8 moved wchar/custom char overloads to xchar.h, so for fmt 8 compatibility, xchar.h must be included
+
+See https://github.com/fmtlib/fmt/commit/76ee490468212f8705a1421b4c88f8f814b2d351
+---
+ xbmc/utils/StringUtils.h | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/utils/StringUtils.h b/xbmc/utils/StringUtils.h
+index 9736a0ed63d6..9ff28e20d1d5 100644
+--- a/xbmc/utils/StringUtils.h
++++ b/xbmc/utils/StringUtils.h
+@@ -31,8 +31,12 @@
+ #if FMT_VERSION >= 40000
+ #include <fmt/printf.h>
+ #endif
+ 
++#if FMT_VERSION >= 80000
++#include <fmt/xchar.h>
++#endif
++
+ #include "XBDateTime.h"
+ #include "utils/params_check_macros.h"
+ 
+ /*! \brief  C-processor Token stringification

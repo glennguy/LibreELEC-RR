@@ -71,8 +71,19 @@ if [ -z "$KERNEL_TOOLCHAIN" -a "$TARGET_KERNEL_ARCH" = "arm64" -a "$TARGET_ARCH"
     die "No known toolchain available for ${MACHINE_HARDWARE_NAME}."
   fi
 fi
+if [ -z "$KERNEL_TOOLCHAIN" -a "$TARGET_ARCH" = "riscv64" -a "$TARGET_KERNEL_ARCH" = "riscv" ]; then
+  if [ "${MACHINE_HARDWARE_NAME}" = "x86_64" ]; then
+    KERNEL_TOOLCHAIN="riscv64-unknown-linux-gnu"
+  else
+    die "No known toolchain available for ${MACHINE_HARDWARE_NAME}."
+  fi
+fi
 if [ -n "$KERNEL_TOOLCHAIN" ]; then
-  TARGET_KERNEL_PREFIX=$TOOLCHAIN/lib/gcc-arm-$KERNEL_TOOLCHAIN/bin/$KERNEL_TOOLCHAIN-
+  if [ "$TARGET_KERNEL_ARCH" = "riscv" ]; then
+    TARGET_KERNEL_PREFIX=$TOOLCHAIN/lib/gcc-$KERNEL_TOOLCHAIN/bin/$KERNEL_TOOLCHAIN-
+  else
+    TARGET_KERNEL_PREFIX=$TOOLCHAIN/lib/gcc-arm-$KERNEL_TOOLCHAIN/bin/$KERNEL_TOOLCHAIN-
+  fi
 else
   TARGET_KERNEL_PREFIX=$TARGET_PREFIX
 fi

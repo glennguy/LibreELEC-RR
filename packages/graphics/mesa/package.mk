@@ -4,11 +4,11 @@
 
 PKG_NAME="mesa"
 PKG_VERSION="21.2.1"
-PKG_SHA256="c09d1170630150915ed5bbadfed1394f5a6f4cdbf40fde39d4a24f605cb5b052"
+PKG_SHA256=""
 PKG_LICENSE="OSS"
 PKG_SITE="http://www.mesa3d.org/"
-PKG_URL="https://github.com/mesa3d/mesa/archive/mesa-${PKG_VERSION}.tar.gz"
-PKG_DEPENDS_TARGET="toolchain expat libdrm Mako:host zstd"
+PKG_URL="https://mesa.freedesktop.org/archive/mesa-${PKG_VERSION}.tar.xz"
+PKG_DEPENDS_TARGET="toolchain expat libdrm zstd Mako:host"
 PKG_LONGDESC="Mesa is a 3-D graphics library with an API."
 PKG_TOOLCHAIN="meson"
 

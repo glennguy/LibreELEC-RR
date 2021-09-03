@@ -1,3 +1,4 @@
+# Reference https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 # determines TARGET_CPU, if not forced by user
   if [ -z "$TARGET_CPU" ]; then
     TARGET_CPU="core2"

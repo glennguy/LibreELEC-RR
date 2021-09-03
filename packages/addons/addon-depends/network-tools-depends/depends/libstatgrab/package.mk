@@ -2,8 +2,8 @@
 # Copyright (C) 2016-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="libstatgrab"
-PKG_VERSION="0.92"
-PKG_SHA256="5bf1906aff9ffc3eeacf32567270f4d819055d8386d98b9c8c05519012d5a196"
+PKG_VERSION="0.92.1"
+PKG_SHA256="5688aa4a685547d7174a8a373ea9d8ee927e766e3cc302bdee34523c2c5d6c11"
 PKG_SITE="http://www.i-scream.org/libstatgrab/"
 PKG_URL="http://ftp.i-scream.org/pub/i-scream/libstatgrab/libstatgrab-${PKG_VERSION}.tar.gz"
 PKG_DEPENDS_TARGET="toolchain"

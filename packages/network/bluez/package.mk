@@ -3,8 +3,8 @@
 # Copyright (C) 2019-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="bluez"
-PKG_VERSION="5.56"
-PKG_SHA256="59c4dba9fc8aae2a6a5f8f12f19bc1b0c2dc27355c7ca3123eed3fe6bd7d0b9d"
+PKG_VERSION="5.61"
+PKG_SHA256="83afd6c52179554bfeabbcb538fec2eb6be90a8ac3c40871b49d7ad8b49c423b"
 PKG_LICENSE="GPL"
 PKG_SITE="http://www.bluez.org/"
 PKG_URL="https://www.kernel.org/pub/linux/bluetooth/${PKG_NAME}-${PKG_VERSION}.tar.xz"
@@ -26,6 +26,7 @@ PKG_CONFIGURE_OPTS_TARGET="--disable-dependency-tracking \
                            --enable-library \
                            --enable-udev \
                            --disable-cups \
+                           --disable-manpages \
                            --disable-obex \
                            --enable-client \
                            --enable-systemd \
@@ -64,6 +65,9 @@ post_makeinstall_target() {
 
   # bluez looks in /etc/firmware/
     ln -sf /usr/lib/firmware ${INSTALL}/etc/firmware
+
+   mkdir -p ${SYSROOT_PREFIX}/usr/lib/pkgconfig
+     cp lib/bluez.pc ${SYSROOT_PREFIX}/usr/lib/pkgconfig
 }
 
 post_install() {
