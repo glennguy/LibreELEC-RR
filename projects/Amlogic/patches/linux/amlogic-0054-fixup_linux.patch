@@ -1,0 +1,28 @@
+From b29020c5063051dd2b38ff230a96f5056f1eb23c Mon Sep 17 00:00:00 2001
+From: Christian Hewitt <christianshewitt@gmail.com>
+Date: Fri, 6 Aug 2021 16:10:15 +0000
+Subject: [PATCH 54/54] fixup_linux
+
+---
+ arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts b/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
+index 4c24ccc6daa1..4b7980774eb1 100644
+--- a/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
++++ b/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
+@@ -305,6 +305,11 @@
+ 	clock-names = "clkin0";
+ };
+ 
++&saradc {
++	status = "okay";
++	vref-supply = <&vddao_1v8>;
++};
++
+ /* SDIO */
+ &sd_emmc_a {
+ 	status = "okay";
+-- 
+2.17.1
+

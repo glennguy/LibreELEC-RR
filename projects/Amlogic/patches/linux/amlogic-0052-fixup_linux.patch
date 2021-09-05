@@ -1,0 +1,24 @@
+From 559d87e3548547f9b1b83ec2367559a5eaa7ed5c Mon Sep 17 00:00:00 2001
+From: Christian Hewitt <christianshewitt@gmail.com>
+Date: Fri, 6 Aug 2021 16:05:36 +0000
+Subject: [PATCH 52/54] fixup_linux
+
+---
+ arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts b/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
+index 32828037c7fa..80861da950f8 100644
+--- a/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
++++ b/arch/arm64/boot/dts/amlogic/meson-g12a-radxa-zero.dts
+@@ -6,6 +6,7 @@
+ /dts-v1/;
+ 
+ #include "meson-g12a.dtsi"
++#include <dt-bindings/gpio/meson-g12a-gpio.h>
+ #include <dt-bindings/sound/meson-g12a-tohdmitx.h>
+ 
+ / {
+-- 
+2.17.1
+

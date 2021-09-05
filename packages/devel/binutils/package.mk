@@ -3,11 +3,11 @@
 # Copyright (C) 2018-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="binutils"
-PKG_VERSION="2.35.1"
-PKG_SHA256="3ced91db9bf01182b7e420eab68039f2083aed0a214c0424e257eae3ddee8607"
+PKG_VERSION="2.37"
+PKG_SHA256="820d9724f020a3e69cb337893a0b63c2db161dadcb0e06fc11dc29eb1e84a32c"
 PKG_LICENSE="GPL"
-PKG_SITE="http://www.gnu.org/software/binutils/"
-PKG_URL="http://ftp.gnu.org/gnu/binutils/${PKG_NAME}-${PKG_VERSION}.tar.xz"
+PKG_SITE="https://www.gnu.org/software/binutils/"
+PKG_URL="https://ftp.gnu.org/gnu/binutils/${PKG_NAME}-${PKG_VERSION}.tar.xz"
 PKG_DEPENDS_HOST="ccache:host bison:host flex:host linux:host"
 PKG_DEPENDS_TARGET="toolchain zlib binutils:host"
 PKG_LONGDESC="A GNU collection of binary utilities."
@@ -16,6 +16,7 @@ PKG_CONFIGURE_OPTS_HOST="--target=${TARGET_NAME} \
                          --with-sysroot=${SYSROOT_PREFIX} \
                          --with-lib-path=${SYSROOT_PREFIX}/lib:${SYSROOT_PREFIX}/usr/lib \
                          --without-ppl \
+                         --enable-static \
                          --without-cloog \
                          --disable-werror \
                          --disable-multilib \
@@ -70,6 +71,7 @@ make_target() {
   make -C bfd
   make -C opcodes
   make -C binutils strings
+  make -C binutils ar
 }
 
 makeinstall_target() {
@@ -80,4 +82,5 @@ makeinstall_target() {
 
   mkdir -p ${INSTALL}/usr/bin
     cp binutils/strings ${INSTALL}/usr/bin
+    cp binutils/ar      ${INSTALL}/usr/bin/ar
 }

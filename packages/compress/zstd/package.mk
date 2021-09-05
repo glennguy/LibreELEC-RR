@@ -3,7 +3,7 @@
 
 PKG_NAME="zstd"
 PKG_VERSION="1.5.0"
-PKG_SHA256="9aa8dfc1ca17f358b28988ca1f6e00ffe1c6f3198853f8d2022799e6f0669180"
+PKG_SHA256=""
 PKG_LICENSE="BSD/GPLv2"
 PKG_SITE="http://www.zstd.net"
 PKG_URL="https://github.com/facebook/zstd/releases/download/v${PKG_VERSION}/${PKG_NAME}-${PKG_VERSION}.tar.zst"
@@ -21,3 +21,9 @@ PKG_MESON_OPTS_HOST="-Dlegacy_level=0 \
                      -Dzlib=disabled \
                      -Dlzma=disabled \
                      -Dlz4=disabled"
+
+PKG_MESON_OPTS_TARGET="-Dlegacy_level=0 \
+                       -Dbin_programs=false \
+                       -Dzlib=disabled \
+                       -Dlzma=disabled \
+                       -Dlz4=disabled"

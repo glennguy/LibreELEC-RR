@@ -1,0 +1,1250 @@
+From ece8280cd6bbe997b54a5d39fe94d7c035c490d3 Mon Sep 17 00:00:00 2001
+From: Jernej Skrabec <jernej.skrabec@gmail.com>
+Date: Sun, 11 Jul 2021 22:53:51 +0200
+Subject: [PATCH] rtw88 sdio updates
+
+Signed-off-by: Jernej Skrabec <jernej.skrabec@gmail.com>
+---
+ drivers/net/wireless/realtek/rtw88/Kconfig |  13 +-
+ drivers/net/wireless/realtek/rtw88/mac.c   |  23 +-
+ drivers/net/wireless/realtek/rtw88/sdio.c  | 804 +++++++--------------
+ drivers/net/wireless/realtek/rtw88/sdio.h  |   6 +-
+ drivers/net/wireless/realtek/rtw88/tx.h    |  16 +
+ include/linux/mmc/sdio_ids.h               |   2 +-
+ 6 files changed, 325 insertions(+), 539 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtw88/Kconfig b/drivers/net/wireless/realtek/rtw88/Kconfig
+index 8e456a1ccfacba..95e0d49525971d 100644
+--- a/drivers/net/wireless/realtek/rtw88/Kconfig
++++ b/drivers/net/wireless/realtek/rtw88/Kconfig
+@@ -16,6 +16,9 @@ config RTW88_CORE
+ config RTW88_PCI
+ 	tristate
+ 
++config RTW88_SDIO
++	tristate
++
+ config RTW88_8822B
+ 	tristate
+ 
+@@ -72,10 +75,18 @@ config RTW88_8821CE
+ 
+ 	  802.11ac PCIe wireless network adapter
+ 
+-config RTW88_SDIO
++config RTW88_8822BS
++	tristate "Realtek 8822BS SDIO wireless network adapter"
++	depends on MMC
++	select RTW88_CORE
++	select RTW88_SDIO
++	select RTW88_8822B
++
++config RTW88_8822CS
+ 	tristate "Realtek 8822CS SDIO wireless network adapter"
+ 	depends on MMC
+ 	select RTW88_CORE
++	select RTW88_SDIO
+ 	select RTW88_8822C
+ 
+ config RTW88_DEBUG
+diff --git a/drivers/net/wireless/realtek/rtw88/mac.c b/drivers/net/wireless/realtek/rtw88/mac.c
+index 796f7fe62cb943..3a514ee7ed03ac 100644
+--- a/drivers/net/wireless/realtek/rtw88/mac.c
++++ b/drivers/net/wireless/realtek/rtw88/mac.c
+@@ -94,7 +94,7 @@ static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
+ 		}
+ 
+ 		/* FIXME: enable SDIO3 - make this configurable! */
+-		rtw_write8_set(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
++		rtw_write8_clr(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
+ 		break;
+ 	case RTW_HCI_TYPE_USB:
+ 		break;
+@@ -267,6 +267,7 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
+ {
+ 	struct rtw_chip_info *chip = rtwdev->chip;
+ 	const struct rtw_pwr_seq_cmd **pwr_seq;
++	u32 imr;
+ 	u8 rpwm;
+ 	bool cur_pwr;
+ 
+@@ -293,12 +294,19 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
+ 	if (pwr_on == cur_pwr)
+ 		return -EALREADY;
+ 
++	imr = rtw_read32(rtwdev, REG_SDIO_HIMR);
++	rtw_write32(rtwdev, REG_SDIO_HIMR, 0);
++
+ 	pwr_seq = pwr_on ? chip->pwr_on_seq : chip->pwr_off_seq;
+-	if (rtw_pwr_seq_parser(rtwdev, pwr_seq))
++	if (rtw_pwr_seq_parser(rtwdev, pwr_seq)) {
++		rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
+ 		return -EINVAL;
++	}
+ 
+ 	rtw_hci_power_switch(rtwdev, pwr_on);
+ 
++	rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
++
+ 	return 0;
+ }
+ 
+@@ -474,11 +482,10 @@ static void download_firmware_reg_backup(struct rtw_dev *rtwdev,
+ 	tmp = (u8)((tmp & (~BIT_EN_BCN_FUNCTION)) | BIT_DIS_TSF_UDT);
+ 	rtw_write8(rtwdev, REG_BCN_CTRL, tmp);
+ 
+-#if 0
+-	// TODO
+-	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO)
+-		rtw_read8(rtwdev, REG_SDIO_FREE_TXPG);
+-#endif
++	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO) {
++		rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
++		rtw_write8(rtwdev, REG_SDIO_TX_CTRL, 0);
++	}
+ 
+ 	WARN(bckp_idx != DLFW_RESTORE_REG_NUM, "wrong backup number\n");
+ }
+@@ -629,7 +636,7 @@ download_firmware_to_mem(struct rtw_dev *rtwdev, const u8 *data,
+ 	u32 mem_offset;
+ 	u32 residue_size;
+ 	u32 pkt_size;
+-	u32 max_size = 0x1000;
++	u32 max_size = 0x4000;
+ 	u32 val;
+ 	int ret;
+ 
+diff --git a/drivers/net/wireless/realtek/rtw88/sdio.c b/drivers/net/wireless/realtek/rtw88/sdio.c
+index a5638a4d9782f5..eb77d460854fc0 100644
+--- a/drivers/net/wireless/realtek/rtw88/sdio.c
++++ b/drivers/net/wireless/realtek/rtw88/sdio.c
+@@ -20,6 +20,7 @@
+ 
+ #define RTW_SDIO_INDIRECT_RW_RETRIES		50
+ 
++extern struct rtw_chip_info rtw8822b_hw_spec;
+ extern struct rtw_chip_info rtw8822c_hw_spec;
+ 
+ static bool rtw_sdio_is_bus_addr(u32 addr)
+@@ -48,534 +49,324 @@ static u32 rtw_sdio_to_bus_offset(struct rtw_dev *rtwdev, u32 addr)
+ 	return addr;
+ }
+ 
+-static u32 rtw_sdio_mask_addr(u32 addr, bool f0)
++static u32 rtw_sdio_mask_addr(u32 addr)
+ {
+ 	/*
+ 	 * Mask addr to remove driver defined bit and
+ 	 * make sure addr is in valid range
+ 	 */
+-	if (f0)
+-		return addr & 0xfff;
+-	else
+-		return addr & 0x1ffff;
++	return addr & 0x1ffff;
+ }
+ 
+-static void* rtw_sdio_cmd53_safe_buffer(struct rtw_dev *rtwdev, void *buf,
+-					size_t count)
++static bool rtw_sdio_is_buffer_dma_ready(void *buf)
+ {
+-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-
+-	if (virt_addr_valid(buf) && (!object_is_on_stack(buf)))
+-		return buf;
+-
+-	memcpy(rtwsdio->sdio_func->tmpbuf, buf, min_t(size_t, count, 4));
+-
+-	return rtwsdio->sdio_func->tmpbuf;
++	return virt_addr_valid(buf) && !object_is_on_stack(buf);
+ }
+ 
+-static u8 rtw_sdio_readb(struct rtw_dev *rtwdev, u32 addr, int *err_ret)
++static u8 rtw_sdio_readb(struct rtw_dev *rtwdev, u32 addr, int *ret)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	bool f0 = addr & REG_SDIO_ADDR_F0_BIT;
+-	u8 tmp;
+ 
+-	addr = rtw_sdio_mask_addr(addr, f0);
++	addr = rtw_sdio_mask_addr(addr);
+ 
+-	if (f0)
+-		tmp = sdio_f0_readb(rtwsdio->sdio_func, addr, err_ret);
+-	else
+-		tmp = sdio_readb(rtwsdio->sdio_func, addr, err_ret);
+-
+-	return tmp;
++	return sdio_readb(rtwsdio->sdio_func, addr, ret);
+ }
+ 
+-static void rtw_sdio_writeb(struct rtw_dev *rtwdev, u8 data, u32 addr, int *err_ret)
++static int rtw_sdio_writeb(struct rtw_dev *rtwdev, u32 addr, u8 data)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	bool f0 = addr & REG_SDIO_ADDR_F0_BIT;
++	int ret;
+ 
+-	addr = rtw_sdio_mask_addr(addr, f0);
++	addr = rtw_sdio_mask_addr(addr);
+ 
+-	if (f0)
+-		sdio_f0_writeb(rtwsdio->sdio_func, data, addr, err_ret);
+-	else
+-		sdio_writeb(rtwsdio->sdio_func, data, addr, err_ret);
++	sdio_writeb(rtwsdio->sdio_func, data, addr, &ret);
++
++	return ret;
+ }
+ 
+-static void rtw_sdio_read_direct(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-				 size_t count, bool cmd52)
++static int rtw_sdio_read_bytes(struct rtw_dev *rtwdev, u32 addr, void *buf,
++			       size_t count)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	u8 *byte_buf;
+-	int i, ret;
+-
+-	if (cmd52) {
+-		byte_buf = buf;
+-
+-		for (i = 0; i < count; i++) {
+-			byte_buf[i] = rtw_sdio_readb(rtwdev, addr + i, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed read byte %d of %lu using CMD52 from 0x%08x: %d",
+-					 i + 1, count, addr + i, ret);
+-		}
+-	} else {
+-		ret = sdio_memcpy_fromio(rtwsdio->sdio_func,
+-					 rtw_sdio_cmd53_safe_buffer(rtwdev, buf, count),
+-					 rtw_sdio_mask_addr(addr, false), count);
++	u8 *byte_buf = buf;
++	int i, ret = 0;
++
++	addr = rtw_sdio_mask_addr(addr);
++
++	for (i = 0; i < count; i++) {
++		byte_buf[i] = sdio_readb(rtwsdio->sdio_func, addr, &ret);
+ 		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed read %lu byte(s) using CMD53 from 0x%08x: %d",
+-				 count, addr, ret);
++			break;
+ 	}
++
++	return ret;
+ }
+ 
+-static void rtw_sdio_read_indirect(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-				   size_t count, bool cmd52)
++static int rtw_sdio_read_block(struct rtw_dev *rtwdev, u32 addr, void *buf,
++			       size_t count)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	u8 tmp, tmpbuf[8], *byte_buf;
+-	u32 reg_cfg, reg_data;
+-	int i, retry, ret;
+-
+-	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
+-	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
++	void *ptr = buf;
++	bool bounce;
++	int ret;
+ 
+-	if (cmd52) {
+-		byte_buf = buf;
+-
+-		for (i = 0; i < count; i++) {
+-			rtw_sdio_writeb(rtwdev, (addr + i) & 0xff, reg_cfg, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_cfg for indirect reading %d of %lu: %d",
+-					 i + 1, count, ret);
+-
+-			rtw_sdio_writeb(rtwdev, ((addr + i) >> 8) & 0xff,
+-					reg_cfg + 1, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_cfg + 1 for indirect reading %d of %lu: %d",
+-					 i + 1, count, ret);
+-
+-			rtw_sdio_writeb(rtwdev, BIT(3) | BIT(4), reg_cfg + 2, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_cfg + 2 for indirect reading %d of %lu: %d",
+-					 i + 1, count, ret);
+-
+-			for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
+-				tmp = rtw_sdio_readb(rtwdev, reg_cfg + 2, &ret);
+-				if (!ret && tmp & BIT(4))
+-					break;
+-			}
++	addr = rtw_sdio_mask_addr(addr);
+ 
+-			if (retry == RTW_SDIO_INDIRECT_RW_RETRIES)
+-				rtw_warn(rtwdev,
+-					 "Failed to wait for indirect read %d of %lu, last status = 0x%08x",
+-					 i + 1, count, tmp);
++	WARN((addr & 3) || (count & 3), "unaligned read, addr: 0x%x, count: %lu", addr, count);
+ 
+-			byte_buf[i] = rtw_sdio_readb(rtwdev, reg_data, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					"Failed to read indirect byte %d of %lu at 0x%08x: %d",
+-					i + 1, count, addr + i, ret);
+-		}
+-	} else {
+-		sdio_writel(rtwsdio->sdio_func, addr | BIT(19) | BIT(20),
+-			    reg_cfg, &ret);
+-		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed to setup reg_cfg for indirect reading: %d",
+-				 ret);
+-
+-		for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
+-			ret = sdio_readsb(rtwsdio->sdio_func, tmpbuf,
+-					  reg_cfg + 2, sizeof(tmpbuf));
+-			if (!ret && tmpbuf[0] & BIT(4))
+-				break;
+-		}
++	bounce = !rtw_sdio_is_buffer_dma_ready(buf);
++	if (bounce) {
++		ptr = kmalloc(count, GFP_KERNEL);
++		if (!ptr)
++			return -ENOMEM;
++	}
+ 
+-		if (retry == RTW_SDIO_INDIRECT_RW_RETRIES)
+-			rtw_warn(rtwdev,
+-				 "Failed to wait for indirect read, last status = 0x%08x",
+-				 tmpbuf[0]);
++	ret = sdio_memcpy_fromio(rtwsdio->sdio_func, ptr, addr, count);
+ 
+-		memcpy(buf, &tmpbuf[2], count);
++	if (bounce) {
++		memcpy(buf, ptr, count);
++		kfree(ptr);
+ 	}
++
++	return ret;
+ }
+ 
+-static void rtw_sdio_read(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-			  size_t count)
++static int rtw_sdio_write_bytes(struct rtw_dev *rtwdev, u32 addr, void *buf,
++				size_t count)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	bool cmd52, direct;
+-
+-#if 0
+-	if ((offset & 0xFFFF0000) == 0) {
+-		if (adapter->pwr_off_flow_flag == 1 ||
+-		    adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF ||
+-		    cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_RW ||
+-		    cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_R) {
+-			value8 = (u8)r_indir_sdio_88xx(adapter, offset,
+-						       HALMAC_IO_BYTE);
+-		} else {
+-			offset |= WLAN_IOREG_OFFSET;
+-			status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-			if (status != HALMAC_RET_SUCCESS) {
+-				PLTFM_MSG_ERR("[ERR]convert offset\n");
+-				return status;
+-			}
+-			value8 = (u8)PLTFM_SDIO_CMD53_R8(offset);
+-		}
+-	} else {
+-		status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-		if (status != HALMAC_RET_SUCCESS) {
+-			PLTFM_MSG_ERR("[ERR]convert offset\n");
+-			return status;
+-		}
+-		value8 = PLTFM_SDIO_CMD52_R(offset);
+-	}
+-#endif
++	u8 *byte_buf = buf;
++	int i, ret = 0;
+ 
+-	switch (count) {
+-	case 1:
+-		if (rtw_sdio_is_bus_addr(addr)) {
+-			cmd52 = true;
+-			direct = true;
++	addr = rtw_sdio_mask_addr(addr);
+ 
+-			addr = rtw_sdio_to_bus_offset(rtwdev, addr);
+-		} else {
+-			if (rtwsdio->is_powered_on) {
+-				addr = rtw_sdio_to_bus_offset(rtwdev,
+-							      addr | WLAN_IOREG_OFFSET);
++	for (i = 0; i < count; i++) {
++		sdio_writeb(rtwsdio->sdio_func, byte_buf[i], addr + i, &ret);
++		if (ret)
++			break;
++	}
+ 
+-				cmd52 = false;
+-				direct = true;
+-			} else {
+-				cmd52 = true;
+-				direct = false;
+-			}
+-		}
+-		break;
++	return ret;
++}
+ 
+-	case 2:
+-	case 4:
+-		if (rtwsdio->is_powered_on) {
+-			cmd52 = false;
+-			direct = true;
++static int rtw_sdio_write_block(struct rtw_dev *rtwdev, u32 addr, void *buf,
++				size_t count)
++{
++	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
++	void *ptr = buf;
++	bool bounce;
++	int ret;
+ 
+-			if (!rtw_sdio_is_bus_addr(addr))
+-				addr |= WLAN_IOREG_OFFSET;
++	addr = rtw_sdio_mask_addr(addr);
+ 
+-			rtw_sdio_to_bus_offset(rtwdev, addr);
+-		} else {
+-			if (!rtw_sdio_is_bus_addr(addr)) {
+-				cmd52 = true;
+-				direct = false;
+-			} else {
+-				cmd52 = true;
+-				direct = true;
+-			}
+-		}
+-		break;
++	WARN((addr & 3) || (count & 3), "unaligned write, addr: 0x%x, count: %lu", addr, count);
+ 
+-	default:
+-		rtw_warn(rtwdev, "Invalid size %lu for reading", count);
+-		return;
++	bounce = !rtw_sdio_is_buffer_dma_ready(buf);
++	if (bounce) {
++		ptr = kmemdup(buf, count, GFP_KERNEL);
++		if (!ptr)
++			return -ENOMEM;
+ 	}
+ 
+-	sdio_claim_host(rtwsdio->sdio_func);
++	ret = sdio_memcpy_toio(rtwsdio->sdio_func, addr, ptr, count);
+ 
+-	if (direct)
+-		rtw_sdio_read_direct(rtwdev, addr, buf, count, cmd52);
+-	else
+-		rtw_sdio_read_indirect(rtwdev, addr, buf, count, cmd52);
++	if (bounce)
++		kfree(ptr);
+ 
+-	sdio_release_host(rtwsdio->sdio_func);
++	return ret;
+ }
+ 
+-static void rtw_sdio_write_direct(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-				  size_t count, bool cmd52)
++static u8 rtw_sdio_read_indirect8(struct rtw_dev *rtwdev, u32 addr, int *ret)
+ {
+-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	u8 *byte_buf;
+-	int i, ret;
+-
+-	if (cmd52) {
+-		byte_buf = buf;
+-
+-		for (i = 0; i < count; i++) {
+-			rtw_sdio_writeb(rtwdev, byte_buf[i], addr + i, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed write byte %d of %lu using CMD52 from 0x%08x: %d",
+-					 i + 1, count, addr + i, ret);
++	u32 reg_cfg, reg_data;
++	int retry;
++	u8 tmp;
++
++	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
++	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
++
++	*ret = rtw_sdio_writeb(rtwdev, reg_cfg, addr);
++	if (*ret)
++		return 0;
++
++	*ret = rtw_sdio_writeb(rtwdev, reg_cfg + 1, addr >> 8);
++	if (*ret)
++		return 0;
++
++	*ret = rtw_sdio_writeb(rtwdev, reg_cfg + 2, BIT(3));
++	if (*ret)
++		return 0;
++
++	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
++		tmp = rtw_sdio_readb(rtwdev, reg_cfg + 2, ret);
++		if (!ret && tmp & BIT(4))
+ 			break;
+-		}
+-	} else {
+-		ret = sdio_memcpy_toio(rtwsdio->sdio_func,
+-				       rtw_sdio_mask_addr(addr, false),
+-				       rtw_sdio_cmd53_safe_buffer(rtwdev, buf, count),
+-				       count);
+-		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed write %lu byte(s) using CMD53 from 0x%08x: %d",
+-				 count, addr, ret);
+ 	}
++
++	if (*ret)
++		return 0;
++
++	return rtw_sdio_readb(rtwdev, reg_data, ret);
+ }
+ 
+-static void rtw_sdio_write_indirect(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-				    size_t count, bool cmd52)
++static u32 rtw_sdio_read_indirect32(struct rtw_dev *rtwdev, u32 addr, int *ret)
+ {
+-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	u8 tmp, *byte_buf = buf;
+ 	u32 reg_cfg, reg_data;
+-	int i, retry, ret;
+-
+-	if (count != 1 && count != 2 && count != 4) {
+-		rtw_warn(rtwdev,
+-			 "Invalid size %lu for indirect write", count);
+-		return;
+-	}
++	int retry;
++	u32 data;
++	u8 tmp;
+ 
+ 	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
+ 	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
+ 
+-	if (cmd52) {
+-		byte_buf = buf;
+-
+-		rtw_sdio_writeb(rtwdev, addr & 0xff, reg_cfg, &ret);
+-		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed to setup reg_cfg for indirect writing: %d",
+-				 ret);
++	data = addr | BIT(19) | BIT(17);
++	*ret = rtw_sdio_write_block(rtwdev, reg_cfg, &data, 4);
++	if (*ret)
++		return 0;
+ 
+-		rtw_sdio_writeb(rtwdev, (addr >> 8) & 0xff, reg_cfg + 1, &ret);
+-		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed to setup reg_cfg + 1 for indirect writing: %d",
+-				 ret);
+-
+-		for (i = 0; i < count; i++) {
+-			rtw_sdio_writeb(rtwdev, byte_buf[i], reg_data + i, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_data + %d for indirect writing: %d",
+-					 i, ret);
+-		}
++	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
++		tmp = rtw_sdio_readb(rtwdev, reg_cfg + 2, ret);
++		if (!ret && tmp & BIT(4))
++			break;
++	}
+ 
+-		rtw_sdio_writeb(rtwdev, (count / 2) | BIT(2) | BIT(4),
+-				reg_cfg + 2, &ret);
+-		if (ret)
+-			rtw_warn(rtwdev,
+-				 "Failed to setup reg_cfg + 2 for indirect writing: %d",
+-				 ret);
+-
+-		for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
+-			tmp = rtw_sdio_readb(rtwdev, reg_cfg + 2, &ret);
+-			if (!ret && tmp & BIT(4))
+-				break;
+-		}
++	if (*ret)
++		return 0;
+ 
+-		if (retry == RTW_SDIO_INDIRECT_RW_RETRIES)
+-			rtw_warn(rtwdev,
+-				 "Failed to wait for indirect write, last status = 0x%08x",
+-				 tmp);
+-	} else {
+-		for (i = 0; i < count; i++) {
+-			sdio_writel(rtwsdio->sdio_func, byte_buf[i], reg_data,
+-				    &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_data for indirect writing %d of %lu: %d",
+-					 i + 1, count, ret);
+-
+-			sdio_writel(rtwsdio->sdio_func,
+-				    addr | ((count / 2) << 16) | BIT(18) | BIT(20),
+-				    reg_cfg, &ret);
+-			if (ret)
+-				rtw_warn(rtwdev,
+-					 "Failed to setup reg_cfg for indirect writing %d of %lu: %d",
+-					 i + 1, count, ret);
+-
+-			for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
+-				tmp = rtw_sdio_readb(rtwdev, reg_cfg + 2, &ret);
+-				if (!ret && tmp & BIT(4))
+-					break;
+-			}
++	*ret = rtw_sdio_read_block(rtwdev, reg_data, &data, 4);
+ 
+-			if (retry == RTW_SDIO_INDIRECT_RW_RETRIES)
+-				rtw_warn(rtwdev,
+-					 "Failed to wait for indirect write %d of %lu, last status = 0x%08x",
+-					 i + 1, count, tmp);
+-			}
+-	}
++	return data;
+ }
+ 
+-static void rtw_sdio_write(struct rtw_dev *rtwdev, u32 addr, void *buf,
+-			   size_t count)
++static int rtw_sdio_read_indirect(struct rtw_dev *rtwdev, u32 addr, u8 *buf,
++				  size_t count)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	bool cmd52, direct;
++	bool unaligned;
++	size_t i;
++	int ret;
++
++	mutex_lock(&rtwsdio->indirect_mutex);
+ 
+ 	switch (count) {
+ 	case 1:
+-		if (!rtwsdio->is_powered_on && !rtw_sdio_is_bus_addr(addr)) {
+-			cmd52 = true;
+-			direct = false;
+-		} else {
+-			cmd52 = true;
+-			direct = true;
+-
+-			if (!rtw_sdio_is_bus_addr(addr))
+-				addr |= WLAN_IOREG_OFFSET;
+-
+-			addr = rtw_sdio_to_bus_offset(rtwdev, addr);
+-		}
++		if (!rtwsdio->is_powered_on)
++			buf[0] = rtw_sdio_read_indirect8(rtwdev, addr, &ret);
++		else
++			buf[0] = rtw_sdio_read_indirect32(rtwdev, addr, &ret);
+ 		break;
+ 
+ 	case 2:
+ 	case 4:
+-		if (!rtwsdio->is_powered_on || (addr & (count - 1)) != 0) {
+-			if (!rtw_sdio_is_bus_addr(addr) && (addr & (count - 1)) == 0) {
+-				cmd52 = true;
+-				direct = false;
++		unaligned = (addr & (count - 1));
++		if (!rtwsdio->is_powered_on) {
++			if (unaligned) {
++				for (i = 0; i < count; i++) {
++					buf[i] = rtw_sdio_read_indirect8(rtwdev, addr + i, &ret);
++					if (ret)
++						break;
++				}
+ 			} else {
+-				cmd52 = true;
+-				direct = true;
+-
+-				if (!rtw_sdio_is_bus_addr(addr))
+-					addr |= WLAN_IOREG_OFFSET;
+-
+-				addr = rtw_sdio_to_bus_offset(rtwdev, addr);
++				buf[0] = rtw_sdio_read_indirect8(rtwdev, addr, &ret);
++				if (ret)
++					break;
++				addr = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
++				for (i = 1; i < count; i++) {
++					buf[i] = rtw_sdio_readb(rtwdev, addr + i, &ret);
++					if (ret)
++						break;
++				}
+ 			}
+ 		} else {
+-			cmd52 = false;
+-			direct = true;
+-
+-			if (!rtw_sdio_is_bus_addr(addr))
+-				addr |= WLAN_IOREG_OFFSET;
++			if (unaligned) {
++				for (i = 0; i < count; i++) {
++					buf[i] = rtw_sdio_read_indirect32(rtwdev, addr + i, &ret);
++					if (ret)
++						break;
++				}
++			} else {
++				u32 val;
+ 
+-			addr = rtw_sdio_to_bus_offset(rtwdev, addr);
++				val = rtw_sdio_read_indirect32(rtwdev, addr + i, &ret);
++				memcpy(buf, &val, count);
++			}
+ 		}
+ 		break;
+ 
+ 	default:
+-		rtw_warn(rtwdev, "Invalid size %lu for writing", count);
+-		return;
+-	}
+-#if 0
+-	enum halmac_ret_status status = HALMAC_RET_SUCCESS;
+-	enum halmac_sdio_cmd53_4byte_mode cmd53_4byte =
+-						adapter->sdio_cmd53_4byte;
+-
+-	if ((adapter->pwr_off_flow_flag == 1 ||
+-	     adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF ||
+-	     cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_RW ||
+-	     cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_R) &&
+-	    (offset & 0xFFFF0000) == 0) {
+-		w_indir_sdio_88xx(adapter, offset, value, HALMAC_IO_BYTE);
+-	} else {
+-		if ((offset & 0xFFFF0000) == 0)
+-			offset |= WLAN_IOREG_OFFSET;
+-		status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-		if (status != HALMAC_RET_SUCCESS) {
+-			PLTFM_MSG_ERR("[ERR]convert offset\n");
+-			return status;
+-		}
+-		PLTFM_SDIO_CMD52_W(offset, value);
++		rtw_warn(rtwdev, "Invalid size %lu for indirect reading", count);
+ 	}
+-	return HALMAC_RET_SUCCESS;
+-#endif
+-#if 0
+-	enum halmac_ret_status status = HALMAC_RET_SUCCESS;
+-
+-	if (adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF ||
+-	    ((offset & (2 - 1)) != 0) ||
+-	    adapter->sdio_cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_RW ||
+-	    adapter->sdio_cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_W) {
+-		if ((offset & 0xFFFF0000) == 0 && ((offset & (2 - 1)) == 0)) {
+-			status = w_indir_sdio_88xx(adapter, offset, value,
+-						   HALMAC_IO_WORD);
+-		} else {
+-			if ((offset & 0xFFFF0000) == 0)
+-				offset |= WLAN_IOREG_OFFSET;
+ 
+-			status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-			if (status != HALMAC_RET_SUCCESS) {
+-				PLTFM_MSG_ERR("[ERR]convert offset\n");
+-				return status;
+-			}
+-			PLTFM_SDIO_CMD52_W(offset, (u8)(value & 0xFF));
+-			PLTFM_SDIO_CMD52_W(offset + 1,
+-					   (u8)((value & 0xFF00) >> 8));
+-		}
+-	} else {
+-		if ((offset & 0xFFFF0000) == 0)
+-			offset |= WLAN_IOREG_OFFSET;
+-
+-		status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-		if (status != HALMAC_RET_SUCCESS) {
+-			PLTFM_MSG_ERR("[ERR]convert offset\n");
+-			return status;
+-		}
++	mutex_unlock(&rtwsdio->indirect_mutex);
+ 
+-		PLTFM_SDIO_CMD53_W16(offset, value);
+-	}
+-	return status;
+-#endif
+-#if 0
+-	if (adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF ||
+-	    (offset & (4 - 1)) !=  0) {
+-		if ((offset & 0xFFFF0000) == 0 && ((offset & (4 - 1)) == 0)) {
+-			status = w_indir_sdio_88xx(adapter, offset, value,
+-						   HALMAC_IO_DWORD);
+-		} else {
+-			if ((offset & 0xFFFF0000) == 0)
+-				offset |= WLAN_IOREG_OFFSET;
++	return ret;
++}
+ 
+-			status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-			if (status != HALMAC_RET_SUCCESS) {
+-				PLTFM_MSG_ERR("[ERR]convert offset\n");
+-				return status;
+-			}
+-			PLTFM_SDIO_CMD52_W(offset, (u8)(value & 0xFF));
+-			PLTFM_SDIO_CMD52_W(offset + 1,
+-					   (u8)((value >> 8) & 0xFF));
+-			PLTFM_SDIO_CMD52_W(offset + 2,
+-					   (u8)((value >> 16) & 0xFF));
+-			PLTFM_SDIO_CMD52_W(offset + 3,
+-					   (u8)((value >> 24) & 0xFF));
+-		}
+-	} else {
+-		if ((offset & 0xFFFF0000) == 0)
+-			offset |= WLAN_IOREG_OFFSET;
+-
+-		status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-		if (status != HALMAC_RET_SUCCESS) {
+-			PLTFM_MSG_ERR("[ERR]convert offset\n");
+-			return status;
+-		}
+-		PLTFM_SDIO_CMD53_W32(offset, value);
++static int rtw_sdio_read(struct rtw_dev *rtwdev, u32 addr, void *buf,
++			 size_t count)
++{
++	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
++	bool per_byte, direct;
++	int ret;
++
++	direct = rtw_sdio_is_bus_addr(addr);
++	if (direct) {
++		addr = rtw_sdio_to_bus_offset(rtwdev, addr);
++		per_byte = (addr & 3) ||
++			   (count & 3) ||
++			   !rtwsdio->is_powered_on;
+ 	}
+-#endif
+ 
+ 	sdio_claim_host(rtwsdio->sdio_func);
+ 
+-	if (direct)
+-		rtw_sdio_write_direct(rtwdev, addr, buf, count, cmd52);
++	if (!direct)
++		ret = rtw_sdio_read_indirect(rtwdev, addr, buf, count);
++	else if (per_byte)
++		ret = rtw_sdio_read_bytes(rtwdev, addr, buf, count);
+ 	else
+-		rtw_sdio_write_indirect(rtwdev, addr, buf, count, cmd52);
++		ret = rtw_sdio_read_block(rtwdev, addr, buf, count);
+ 
+ 	sdio_release_host(rtwsdio->sdio_func);
++
++	return ret;
++}
++
++static int rtw_sdio_write(struct rtw_dev *rtwdev, u32 addr, void *buf,
++			  size_t count)
++{
++	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
++	bool per_byte;
++	int ret;
++
++	if (!rtw_sdio_is_bus_addr(addr))
++		addr |= WLAN_IOREG_OFFSET;
++
++	addr = rtw_sdio_to_bus_offset(rtwdev, addr);
++
++	per_byte = (addr & 3) ||
++		   (count & 3) ||
++		   !rtwsdio->is_powered_on;
++
++	sdio_claim_host(rtwsdio->sdio_func);
++
++	if (per_byte)
++		ret = rtw_sdio_write_bytes(rtwdev, addr, buf, count);
++	else
++		ret = rtw_sdio_write_block(rtwdev, addr, buf, count);
++
++	sdio_release_host(rtwsdio->sdio_func);
++
++	return ret;
+ }
+ 
+ static u8 rtw_sdio_read8(struct rtw_dev *rtwdev, u32 addr)
+ {
++	int ret;
+ 	u8 tmp;
+ 
+-	rtw_sdio_read(rtwdev, addr, &tmp, 1);
++	ret = rtw_sdio_read(rtwdev, addr, &tmp, 1);
++	if (ret)
++		rtw_warn(rtwdev, "sdio read8 failed (0x%x): %d", addr, ret);
+ 
+ 	return tmp;
+ }
+@@ -583,48 +374,11 @@ static u8 rtw_sdio_read8(struct rtw_dev *rtwdev, u32 addr)
+ static u16 rtw_sdio_read16(struct rtw_dev *rtwdev, u32 addr)
+ {
+ 	__le16 tmp;
+-#if 0
+-	enum halmac_ret_status status = HALMAC_RET_SUCCESS;
+-	union {
+-		__le16 word;
+-		u8 byte[2];
+-	} value16 = { 0x0000 };
+-
+-	if ((offset & 0xFFFF0000) == 0 &&
+-	    adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF) {
+-		value16.byte[0] = (u8)r_indir_sdio_88xx(adapter, offset,
+-							HALMAC_IO_BYTE);
+-		value16.byte[1] = (u8)r_indir_sdio_88xx(adapter, offset + 1,
+-							HALMAC_IO_BYTE);
+-		return rtk_le16_to_cpu(value16.word);
+-	} else if ((offset & 0xFFFF0000) != 0 &&
+-		   adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF) {
+-		value16.byte[0] = PLTFM_SDIO_CMD52_R(offset);
+-		value16.byte[1] = PLTFM_SDIO_CMD52_R(offset + 1);
+-		return rtk_le16_to_cpu(value16.word);
+-	}
+-
+-	if ((offset & 0xFFFF0000) == 0)
+-		offset |= WLAN_IOREG_OFFSET;
+-
+-	status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-	if (status != HALMAC_RET_SUCCESS) {
+-		PLTFM_MSG_ERR("[ERR]convert offset\n");
+-		return status;
+-	}
+-
+-	if (((offset & (2 - 1)) != 0) ||
+-	    adapter->sdio_cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_RW ||
+-	    adapter->sdio_cmd53_4byte == HALMAC_SDIO_CMD53_4BYTE_MODE_R) {
+-		value16.byte[0] = (u8)PLTFM_SDIO_CMD53_R32(offset);
+-		value16.byte[1] = (u8)PLTFM_SDIO_CMD53_R32(offset + 1);
+-		return rtk_le16_to_cpu(value16.word);
+-	}
+-
+-	return PLTFM_SDIO_CMD53_R16(offset);
+-#endif
++	int ret;
+ 
+-	rtw_sdio_read(rtwdev, addr, &tmp, 2);
++	ret = rtw_sdio_read(rtwdev, addr, &tmp, 2);
++	if (ret)
++		rtw_warn(rtwdev, "sdio read16 failed (0x%x): %d", addr, ret);
+ 
+ 	return le16_to_cpu(tmp);
+ }
+@@ -632,75 +386,42 @@ static u16 rtw_sdio_read16(struct rtw_dev *rtwdev, u32 addr)
+ static u32 rtw_sdio_read32(struct rtw_dev *rtwdev, u32 addr)
+ {
+ 	__le32 tmp;
+-#if 0
+-	enum halmac_ret_status status = HALMAC_RET_SUCCESS;
+-	union {
+-		__le32 dword;
+-		u8 byte[4];
+-	} value32 = { 0x00000000 };
+-
+-	if (((offset & 0xFFFF0000) == 0) &&
+-	    adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF) {
+-		value32.byte[0] = (u8)r_indir_sdio_88xx(adapter, offset,
+-							HALMAC_IO_BYTE);
+-		value32.byte[1] = (u8)r_indir_sdio_88xx(adapter, offset + 1,
+-							HALMAC_IO_BYTE);
+-		value32.byte[2] = (u8)r_indir_sdio_88xx(adapter, offset + 2,
+-							HALMAC_IO_BYTE);
+-		value32.byte[3] = (u8)r_indir_sdio_88xx(adapter, offset + 3,
+-							HALMAC_IO_BYTE);
+-		return rtk_le32_to_cpu(value32.dword);
+-	} else if (((offset & 0xFFFF0000) != 0) &&
+-		   adapter->halmac_state.mac_pwr == HALMAC_MAC_POWER_OFF) {
+-		value32.byte[0] = PLTFM_SDIO_CMD52_R(offset);
+-		value32.byte[1] = PLTFM_SDIO_CMD52_R(offset + 1);
+-		value32.byte[2] = PLTFM_SDIO_CMD52_R(offset + 2);
+-		value32.byte[3] = PLTFM_SDIO_CMD52_R(offset + 3);
+-		return rtk_le32_to_cpu(value32.dword);
+-	}
+-
+-	if (0 == (offset & 0xFFFF0000))
+-		offset |= WLAN_IOREG_OFFSET;
+-
+-	status = cnv_to_sdio_bus_offset_88xx(adapter, &offset);
+-	if (status != HALMAC_RET_SUCCESS) {
+-		PLTFM_MSG_ERR("[ERR]convert offset\n");
+-		return status;
+-	}
+-
+-	if ((offset & (4 - 1)) != 0) {
+-		value32.byte[0] = (u8)PLTFM_SDIO_CMD53_R32(offset);
+-		value32.byte[1] = (u8)PLTFM_SDIO_CMD53_R32(offset + 1);
+-		value32.byte[2] = (u8)PLTFM_SDIO_CMD53_R32(offset + 2);
+-		value32.byte[3] = (u8)PLTFM_SDIO_CMD53_R32(offset + 3);
+-		return rtk_le32_to_cpu(value32.dword);
+-	}
+-
+-	return PLTFM_SDIO_CMD53_R32(offset);
+-#endif
++	int ret;
+ 
+-	rtw_sdio_read(rtwdev, addr, &tmp, 4);
++	ret = rtw_sdio_read(rtwdev, addr, &tmp, 4);
++	if (ret)
++		rtw_warn(rtwdev, "sdio read32 failed (0x%x): %d", addr, ret);
+ 
+ 	return le32_to_cpu(tmp);
+ }
+ 
+ static void rtw_sdio_write8(struct rtw_dev *rtwdev, u32 addr, u8 val)
+ {
+-	rtw_sdio_write(rtwdev, addr, &val, 1);
++	int ret;
++
++	ret = rtw_sdio_write(rtwdev, addr, &val, 1);
++	if (ret)
++		rtw_warn(rtwdev, "sdio write8 failed (0x%x): %d", addr, ret);
+ }
+ 
+ static void rtw_sdio_write16(struct rtw_dev *rtwdev, u32 addr, u16 val)
+ {
+ 	__le16 tmp = cpu_to_le16(val);
++	int ret;
+ 
+-	rtw_sdio_write(rtwdev, addr, &tmp, 2);
++	ret = rtw_sdio_write(rtwdev, addr, &tmp, 2);
++	if (ret)
++		rtw_warn(rtwdev, "sdio write16 failed (0x%x): %d", addr, ret);
+ }
+ 
+ static void rtw_sdio_write32(struct rtw_dev *rtwdev, u32 addr, u32 val)
+ {
+ 	__le32 tmp = cpu_to_le32(val);
++	int ret;
+ 
+-	rtw_sdio_write(rtwdev, addr, &tmp, 4);
++	ret = rtw_sdio_write(rtwdev, addr, &tmp, 4);
++	if (ret)
++		rtw_warn(rtwdev, "sdio write32 failed (0x%x): %d", addr, ret);
+ }
+ 
+ static size_t rtw_sdio_cmd53_align_size(size_t len)
+@@ -739,10 +460,18 @@ static void rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+ 
++	printk("rtw_sdio_read_port\n");
++
++	WARN((rtwsdio->rx_addr & 3) || (count & 3), "port unaligned read");
++
++	sdio_claim_host(rtwsdio->sdio_func);
++
+ 	// TODO: CMD53 only so far...
+ 	sdio_memcpy_fromio(rtwsdio->sdio_func, buf,
+ 			   RTW_SDIO_ADDR_RX_RX0FF_GEN(rtwsdio->rx_addr++),
+ 			   count);
++
++	sdio_release_host(rtwsdio->sdio_func);
+ }
+ 
+ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
+@@ -752,15 +481,19 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
+ 	u32 txaddr;
+ 	int ret;
+ 
++	printk("rtw_sdio_write_port\n");
++
+ 	txaddr = rtw_sdio_get_tx_addr(rtwdev, RTW_TX_QUEUE_BCN);
+ 	if (!txaddr)
+ 		return -EINVAL;
+ 
++	txaddr += DIV_ROUND_UP(count, 4);
++
+ 	txsize = rtw_sdio_cmd53_align_size(ALIGN(count, 4));
+ 
+ 	sdio_claim_host(rtwsdio->sdio_func);
+ 	ret = sdio_memcpy_toio(rtwsdio->sdio_func,
+-			       rtw_sdio_mask_addr(txaddr, false), buf, txsize);
++			       rtw_sdio_mask_addr(txaddr), buf, txsize);
+ 	sdio_release_host(rtwsdio->sdio_func);
+ 
+ 	if (ret)
+@@ -776,6 +509,7 @@ static void rtw_sdio_init(struct rtw_dev *rtwdev)
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+ 
+ 	rtwsdio->irq_mask = REG_SDIO_HIMR_RX_REQUEST | REG_SDIO_HIMR_CPWM1;
++	mutex_init(&rtwsdio->indirect_mutex);
+ 
+ 	spin_lock_init(&rtwsdio->irq_lock);
+ }
+@@ -856,16 +590,21 @@ static void rtw_sdio_power_switch(struct rtw_dev *rtwdev, bool on)
+ static int rtw_sdio_write_data_rsvd_page(struct rtw_dev *rtwdev, u8 *buf,
+ 					 u32 size)
+ {
++	struct rtw_chip_info *chip = rtwdev->chip;
+ 	struct rtw_tx_pkt_info pkt_info = {};
+ 	struct sk_buff *skb;
++	u8 *pkt_desc;
+ 	int ret;
+ 
+ 	skb = rtw_tx_write_data_rsvd_page_get(rtwdev, &pkt_info, buf, size);
+ 	if (!skb)
+ 		return -ENOMEM;
+ 
++	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
++	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
+ 	pkt_info.qsel = TX_DESC_QSEL_BEACON;
+ 	rtw_tx_fill_tx_desc(&pkt_info, skb);
++	fill_txdesc_checksum_common(skb->data, 16);
+ 
+ 	ret = rtw_sdio_write_port(rtwdev, skb->data, skb->len);
+ 	dev_kfree_skb_any(skb);
+@@ -899,22 +638,25 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
+ 	// TODO: not complete
+ }
+ 
+-static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev, u32 rx_len)
++static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
+ {
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
++	u16 rx_len;
++
++	rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
+ 
+ 	if (!rx_len)
+ 		return;
+ 
+-	sdio_claim_host(rtwsdio->sdio_func);
++	//sdio_claim_host(rtwsdio->sdio_func);
+ 
+ 	do {
+ 		rtw_sdio_rxfifo_recv(rtwdev, rx_len);
+ 
+-		rx_len = rtw_read32(rtwdev, REG_SDIO_RX0_REQ_LEN);
++		rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
+ 	} while (rx_len);
+ 
+-	sdio_release_host(rtwsdio->sdio_func);
++	//sdio_release_host(rtwsdio->sdio_func);
+ 
+ 	// TODO: not complete
+ }
+@@ -924,21 +666,20 @@ static void rtw_sdio_handle_interrupt(struct sdio_func *sdio_func)
+ 	struct ieee80211_hw *hw = sdio_get_drvdata(sdio_func);
+ 	struct rtw_dev *rtwdev = hw->priv;
+ 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+-	u32 hisr, rx_len;
++	u32 hisr;
+ 
+ 	spin_lock_bh(&rtwsdio->irq_lock);
+ 
+ 	hisr = rtw_read32(rtwdev, REG_SDIO_HISR);
+-	rx_len = rtw_read32(rtwdev, REG_SDIO_RX0_REQ_LEN);
+-
+-	rtw_write32(rtwdev, REG_SDIO_HISR, hisr);
+ 
+ 	if (hisr & REG_SDIO_HISR_TXERR)
+ 		rtw_sdio_tx_err_isr(rtwdev);
+-	if (hisr & REG_SDIO_HISR_RX_REQUEST)
+-		rtw_sdio_rx_isr(rtwdev, rx_len);
++	if (hisr & REG_SDIO_HISR_RX_REQUEST) {
++		hisr ^= REG_SDIO_HISR_RX_REQUEST;
++		rtw_sdio_rx_isr(rtwdev);
++	}
+ 
+-	rtw_sdio_enable_interrupt(rtwdev, rtwsdio);
++	rtw_write32(rtwdev, REG_SDIO_HISR, hisr);
+ 
+ 	spin_unlock_bh(&rtwsdio->irq_lock);
+ }
+@@ -1078,6 +819,7 @@ static int rtw_sdio_probe(struct sdio_func *sdio_func,
+ 		goto err_deinit_core;
+ 	}
+ 
++	sdio_func->card->quirks |= MMC_QUIRK_LENIENT_FN0;
+ 	rtw_sdio_init(rtwdev);
+ 
+ 	ret = rtw_chip_info_setup(rtwdev);
+@@ -1146,6 +888,14 @@ static void rtw_sdio_shutdown(struct device *dev)
+ }
+ 
+ static const struct sdio_device_id rtw_sdio_dev_table[] =  {
++#ifdef CONFIG_RTW88_8822B
++	{
++		.vendor = SDIO_VENDOR_ID_REALTEK,
++		.device = SDIO_DEVICE_ID_REALTEK_RTW8822BS,
++		.class = SDIO_CLASS_WLAN,
++		.driver_data = (kernel_ulong_t)&rtw8822b_hw_spec,
++	},
++#endif
+ #ifdef CONFIG_RTW88_8822C
+ 	{
+ 		.vendor = SDIO_VENDOR_ID_REALTEK,
+diff --git a/drivers/net/wireless/realtek/rtw88/sdio.h b/drivers/net/wireless/realtek/rtw88/sdio.h
+index bf6808dd71e3d7..49d07fa346d5d2 100644
+--- a/drivers/net/wireless/realtek/rtw88/sdio.h
++++ b/drivers/net/wireless/realtek/rtw88/sdio.h
+@@ -17,8 +17,8 @@
+ #define RX_RX0FF_OFFSET				0x10340000
+ 
+ #define RTW_SDIO_BUS_MSK			0xffff0000
+-#define SDIO_LOCAL_REG_MSK			0x0000ffff
+-#define WLAN_IOREG_REG_MSK			0x00000fff
++#define SDIO_LOCAL_REG_MSK			0x00000fff
++#define WLAN_IOREG_REG_MSK			0x0000ffff
+ 
+ /* Sdio Address for SDIO Local Reg, TRX FIFO, MAC Reg */
+ #define REG_SDIO_CMD_ADDR_MSK			GENMASK(16, 13)
+@@ -49,6 +49,8 @@ struct rtw_sdio {
+ 	bool sdio3_bus_mode;
+ 
+ 	bool is_powered_on;
++
++	struct mutex indirect_mutex;
+ };
+ 
+ #endif
+diff --git a/drivers/net/wireless/realtek/rtw88/tx.h b/drivers/net/wireless/realtek/rtw88/tx.h
+index 56371eff9f7ff5..3c301b0273e7d5 100644
+--- a/drivers/net/wireless/realtek/rtw88/tx.h
++++ b/drivers/net/wireless/realtek/rtw88/tx.h
+@@ -67,6 +67,8 @@
+ 	le32p_replace_bits((__le32 *)(txdesc) + 0x03, value, BIT(15))
+ #define SET_TX_DESC_BT_NULL(txdesc, value)				       \
+ 	le32p_replace_bits((__le32 *)(txdesc) + 0x02, value, BIT(23))
++#define SET_TX_DESC_TXDESC_CHECKSUM(txdesc, value)                             \
++	le32p_replace_bits((__le32 *)(txdesc) + 0x07, value, GENMASK(15, 0))
+ 
+ enum rtw_tx_desc_queue_select {
+ 	TX_DESC_QSEL_TID0	= 0,
+@@ -119,4 +121,18 @@ rtw_tx_write_data_h2c_get(struct rtw_dev *rtwdev,
+ 			  struct rtw_tx_pkt_info *pkt_info,
+ 			  u8 *buf, u32 size);
+ 
++static inline
++void fill_txdesc_checksum_common(void *txdesc, size_t words)
++{
++	__le16 chksum = 0;
++	__le16 *data = (__le16 *)(txdesc);
++
++	SET_TX_DESC_TXDESC_CHECKSUM(txdesc, 0x0000);
++
++	while (words--)
++		chksum ^= *data++;
++
++	SET_TX_DESC_TXDESC_CHECKSUM(txdesc, __le16_to_cpu(chksum));
++}
++
+ #endif
+diff --git a/include/linux/mmc/sdio_ids.h b/include/linux/mmc/sdio_ids.h
+index b0e8428d62443d..006f3109f194db 100644
+--- a/include/linux/mmc/sdio_ids.h
++++ b/include/linux/mmc/sdio_ids.h
+@@ -105,7 +105,6 @@
+ #define SDIO_DEVICE_ID_MEDIATEK_MT7663		0x7663
+ #define SDIO_DEVICE_ID_MEDIATEK_MT7668		0x7668
+ 
+-
+ #define SDIO_VENDOR_ID_MICROCHIP_WILC		0x0296
+ #define SDIO_DEVICE_ID_MICROCHIP_WILC1000	0x5347
+ 
+@@ -113,6 +112,7 @@
+ #define SDIO_DEVICE_ID_REALTEK_RTW8723BS	0xb723
+ #define SDIO_DEVICE_ID_REALTEK_RTW8723DS	0xd723
+ #define SDIO_DEVICE_ID_REALTEK_RTW8821DS	0xd821
++#define SDIO_DEVICE_ID_REALTEK_RTW8822BS	0xb822
+ #define SDIO_DEVICE_ID_REALTEK_RTW8822CS	0xc822
+ 
+ #define SDIO_VENDOR_ID_SIANO			0x039a

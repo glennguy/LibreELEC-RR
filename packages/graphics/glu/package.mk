@@ -3,11 +3,11 @@
 # Copyright (C) 2019-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="glu"
-PKG_VERSION="9.0.1"
-PKG_SHA256="f98dff2045e0c557da88553bf4cf9958f49cd5bd40d33d2f8b5e13c8f904d126"
+PKG_VERSION="9.0.2"
+PKG_SHA256="19d48400a12cc3095c6662691ee3367a70d7879d50c772ed6e61360307a0db2f"
 PKG_LICENSE="OSS"
-PKG_SITE="http://cgit.freedesktop.org/mesa/glu/"
-PKG_URL="http://cgit.freedesktop.org/mesa/glu/snapshot/${PKG_NAME}-${PKG_VERSION}.tar.gz"
+PKG_SITE="https://gitlab.freedesktop.org/mesa/glu/"
+PKG_URL="https://gitlab.freedesktop.org/mesa/glu/-/archive/master/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
 PKG_DEPENDS_TARGET="toolchain mesa"
 PKG_NEED_UNPACK="$(get_pkg_directory mesa)"
 PKG_LONGDESC="libglu is the The OpenGL utility library"

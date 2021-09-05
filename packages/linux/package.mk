@@ -16,8 +16,8 @@ PKG_PATCH_DIRS="${LINUX}"
 
 case "${LINUX}" in
   amlogic)
-    PKG_VERSION="6cc049b8e0d05e1519d71afcf2d40d3aa5a48366" # 5.11.10
-    PKG_SHA256="d5f4a33af53ef0b22049366b2ae2c30a9bf5741dce7d1d2ed6e499c1d9d31c20"
+    PKG_VERSION="c500bee1c5b2f1d59b1081ac879d73268ab0ff17" # 5.14-rc4
+    PKG_SHA256="946261c480c281e4df5382682c0cdcf4bb77a8e4ed522d5f32ab11c5af48f166"
     PKG_URL="https://github.com/torvalds/linux/archive/${PKG_VERSION}.tar.gz"
     PKG_SOURCE_NAME="linux-${LINUX}-${PKG_VERSION}.tar.gz"
     ;;
@@ -37,7 +37,10 @@ esac
 
 PKG_KERNEL_CFG_FILE=$(kernel_config_path) || die
 
-if [ -n "${KERNEL_TOOLCHAIN}" ]; then
+if [ -n "${KERNEL_TOOLCHAIN}" -a "$TARGET_KERNEL_ARCH" = "riscv" ]; then
+  PKG_DEPENDS_HOST+=" gcc-${KERNEL_TOOLCHAIN}:host"
+  PKG_DEPENDS_TARGET+=" gcc-${KERNEL_TOOLCHAIN}:host"
+elif [ -n "${KERNEL_TOOLCHAIN}" ]; then
   PKG_DEPENDS_HOST+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
   HEADERS_ARCH=${TARGET_ARCH}
@@ -45,7 +48,7 @@ fi
 
 if [ "${PKG_BUILD_PERF}" != "no" ] && grep -q ^CONFIG_PERF_EVENTS= ${PKG_KERNEL_CFG_FILE}; then
   PKG_BUILD_PERF="yes"
-  PKG_DEPENDS_TARGET+=" binutils elfutils libunwind zlib openssl"
+  PKG_DEPENDS_TARGET+=" zlib binutils elfutils libunwind openssl"
 fi
 
 if [ "${TARGET_ARCH}" = "x86_64" ]; then
@@ -169,6 +172,34 @@ pre_make_target() {
     ${PKG_BUILD}/scripts/config --set-str CONFIG_EXTRA_FIRMWARE_DIR "external-firmware"
   fi
 
+  if [ -f "${DISTRO_DIR}/${DISTRO}/required_kernel_options" ]; then
+    while read OPTION; do
+      [ -z "$OPTION" -o -n "$(echo "$OPTION" | grep '^#')" ] && continue
+
+      if [ "$($PKG_BUILD/scripts/config --state ${OPTION%%=*})" != "${OPTION##*=}" ]; then
+        MISSING_OPTIONS+="\t$OPTION\n"
+      fi
+    done < ${DISTRO_DIR}/${DISTRO}/required_kernel_options
+
+    if [ -n "$MISSING_OPTIONS" ]; then
+      die "LINUX: required kernel options not enabled: \n${MISSING_OPTIONS%%}\nPlease run ./scripts/check_kernel_config"
+    fi
+  fi
+
+  if [ -f "${DISTRO_DIR}/${DISTRO}/optional_kernel_options" ]; then
+    while read OPTION; do
+      [ -z "$OPTION" -o -n "$(echo "$OPTION" | grep '^#')" ] && continue
+
+      if [ "$($PKG_BUILD/scripts/config --state ${OPTION%%=*})" != "${OPTION##*=}" ]; then
+        MISSING_OPTIONS+="\t$OPTION\n"
+      fi
+    done < ${DISTRO_DIR}/${DISTRO}/optional_kernel_options
+
+    if [ -n "$MISSING_OPTIONS" ]; then
+      echo -e "LINUX: optional kernel options not enabled: \n${MISSING_OPTIONS%%}\nPlease run ./scripts/check_kernel_config"
+    fi
+  fi
+
   kernel_make oldconfig
 
   if [ -f "${DISTRO_DIR}/${DISTRO}/kernel_options" ]; then
@@ -210,6 +241,9 @@ make_target() {
       case "${TARGET_ARCH}" in
         x86_64)
           PERF_BUILD_ARGS="ARCH=x86"
+          ;;
+        riscv64)
+          PERF_BUILD_ARGS="ARCH=riscv"
           ;;
         aarch64)
           PERF_BUILD_ARGS="ARCH=arm64"

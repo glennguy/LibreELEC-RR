@@ -11,7 +11,11 @@ PKG_LONGDESC="Das U-Boot is a cross-platform bootloader for embedded systems."
 
 PKG_STAMP="${UBOOT_SYSTEM} ${UBOOT_TARGET}"
 
-[ -n "${KERNEL_TOOLCHAIN}" ] && PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
+if [ -n "${KERNEL_TOOLCHAIN}" -a "${TARGET_KERNEL_ARCH}" = "riscv" ]; then
+  PKG_DEPENDS_TARGET+=" gcc-${KERNEL_TOOLCHAIN}:host"
+elif [ -n "${KERNEL_TOOLCHAIN}" ]; then
+  PKG_DEPENDS_TARGET+=" gcc-arm-${KERNEL_TOOLCHAIN}:host"
+fi
 
 if [ -n "${UBOOT_FIRMWARE}" ]; then
   PKG_DEPENDS_TARGET+=" ${UBOOT_FIRMWARE}"
@@ -23,20 +27,24 @@ PKG_NEED_UNPACK="${PROJECT_DIR}/${PROJECT}/bootloader"
 
 case "${PROJECT}" in
   Amlogic)
-    PKG_VERSION="807482107a6d426dbcd6457d9ccf8b3ce6ca887b" # 2021.04-rc2 custodians/u-boot-amlogic-test
-    PKG_SHA256="a10430d2c1a1d9e83e66bed342433ddfe4f3d6f16d9fa8b4d4c034b600baffd3"
-    PKG_URL="https://github.com/chewitt/u-boot/archive/${PKG_VERSION}.tar.gz"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
+    #PKG_URL="https://github.com/chewitt/u-boot/archive/${PKG_VERSION}.tar.gz"
+    PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
     PKG_PATCH_DIRS="amlogic"
     ;;
   Rockchip)
-    PKG_VERSION="8659d08d2b589693d121c1298484e861b7dafc4f"
-    PKG_SHA256="3f9f2bbd0c28be6d7d6eb909823fee5728da023aca0ce37aef3c8f67d1179ec1"
-    PKG_URL="https://github.com/rockchip-linux/u-boot/archive/${PKG_VERSION}.tar.gz"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
+    PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
+    #PKG_VERSION="8659d08d2b589693d121c1298484e861b7dafc4f"
+    #PKG_SHA256="3f9f2bbd0c28be6d7d6eb909823fee5728da023aca0ce37aef3c8f67d1179ec1"
+    #PKG_URL="https://github.com/rockchip-linux/u-boot/archive/${PKG_VERSION}.tar.gz"
     PKG_PATCH_DIRS="rockchip"
     ;;
   *)
-    PKG_VERSION="2021.01"
-    PKG_SHA256="b407e1510a74e863b8b5cb42a24625344f0e0c2fc7582d8c866bd899367d0454"
+    PKG_VERSION="2021.10-rc2"
+    PKG_SHA256="ce035d99217099c82af29fda4992ac2d160010eefacf7bd0f7eafe15c6343bc6"
     PKG_URL="http://ftp.denx.de/pub/u-boot/${PKG_NAME}-${PKG_VERSION}.tar.bz2"
     PKG_PATCH_DIRS="default"
     ;;

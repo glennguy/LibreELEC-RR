@@ -18,7 +18,7 @@ index 38a554208a90..b0fedabc3e7d 100644
 @@ -273,6 +273,19 @@ static void buffer_pool_free(AVBufferPool *pool)
      av_freep(&pool);
  }
- 
+
 +void av_buffer_pool_flush(AVBufferPool *pool)
 +{
 +    ff_mutex_lock(&pool->mutex);
@@ -42,7 +42,7 @@ index c0f3f6cc9abe..998beec9ac5b 100644
 @@ -267,6 +267,11 @@ AVBufferPool *av_buffer_pool_init2(int size, void *opaque,
                                     AVBufferRef* (*alloc)(void *opaque, int size),
                                     void (*pool_free)(void *opaque));
- 
+
 +/**
 + * Free all available buffers in a buffer pool.
 + */
@@ -103,7 +103,7 @@ index 36713ab658f9..81ee0e740498 100755
 +    v4l2_request
      vulkan
  "
- 
+
 @@ -2903,6 +2907,7 @@ d3d11va_deps="dxva_h ID3D11VideoDecoder ID3D11VideoContext"
  dxva2_deps="dxva2api_h DXVA2_ConfigPictureDecode ole32 user32"
  ffnvcodec_deps_any="libdl LoadLibrary"
@@ -129,17 +129,17 @@ index 36713ab658f9..81ee0e740498 100755
 +                             { enabled libudev ||
 +                               die "ERROR: v4l2-request requires --enable-libudev"; }
  enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
- 
- 
+
+
 @@ -6556,6 +6566,8 @@ if enabled v4l2_m2m; then
      check_cc vp9_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP9;"
  fi
- 
+
 +check_func_headers "linux/media.h linux/videodev2.h" v4l2_timeval_to_ns
 +
  check_headers sys/videoio.h
  test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
- 
+
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
 index 5a6ea59715af..d74220516826 100644
 --- a/libavcodec/Makefile
@@ -151,7 +151,7 @@ index 5a6ea59715af..d74220516826 100644
 +OBJS-$(CONFIG_V4L2_REQUEST)            += v4l2_request.o
  OBJS-$(CONFIG_WMA_FREQS)               += wma_freqs.o
  OBJS-$(CONFIG_WMV2DSP)                 += wmv2dsp.o
- 
+
 diff --git a/libavcodec/hwconfig.h b/libavcodec/hwconfig.h
 index f421dc909f44..ee78d8ab8e89 100644
 --- a/libavcodec/hwconfig.h
@@ -162,7 +162,7 @@ index f421dc909f44..ee78d8ab8e89 100644
      HW_CONFIG_HWACCEL(0, 0, 1, XVMC,         NONE,         ff_ ## codec ## _xvmc_hwaccel)
 +#define HWACCEL_V4L2REQUEST(codec) \
 +    HW_CONFIG_HWACCEL(1, 0, 0, DRM_PRIME,    DRM,          ff_ ## codec ## _v4l2request_hwaccel)
- 
+
  #define HW_CONFIG_ENCODER(device, frames, ad_hoc, format, device_type_) \
      &(const AVCodecHWConfigInternal) { \
 diff --git a/libavcodec/v4l2_request.c b/libavcodec/v4l2_request.c
@@ -1259,11 +1259,11 @@ index 111e1dfe7fa1..81f9a74cb629 100644
 +++ b/libavcodec/h264_slice.c
 @@ -1818,7 +1818,7 @@ static int h264_slice_header_parse(const H264Context *h, H264SliceContext *sl,
      }
- 
+
      if (nal->type == H264_NAL_IDR_SLICE)
 -        get_ue_golomb_long(&sl->gb); /* idr_pic_id */
 +        sl->idr_pic_id = get_ue_golomb_long(&sl->gb);
- 
+
      if (sps->poc_type == 0) {
          sl->poc_lsb = get_bits(&sl->gb, sps->log2_max_poc_lsb);
 diff --git a/libavcodec/h264dec.h b/libavcodec/h264dec.h
@@ -1276,7 +1276,7 @@ index a419615124b2..316dc6a2c890 100644
      int max_pic_num;
 +    int idr_pic_id;
  } H264SliceContext;
- 
+
  /**
 
 From 89a05a843c5ecef72b37e5381d2169027e3450b0 Mon Sep 17 00:00:00 2001
@@ -1304,27 +1304,27 @@ index 81f9a74cb629..2b370d18e82d 100644
      int first_slice = sl == h->slice_ctx && !h->current_slice;
 -    int picture_structure;
 +    int picture_structure, pos;
- 
+
      if (first_slice)
          av_assert0(!h->setup_finished);
 @@ -1820,6 +1820,7 @@ static int h264_slice_header_parse(const H264Context *h, H264SliceContext *sl,
      if (nal->type == H264_NAL_IDR_SLICE)
          sl->idr_pic_id = get_ue_golomb_long(&sl->gb);
- 
+
 +    pos = sl->gb.index;
      if (sps->poc_type == 0) {
          sl->poc_lsb = get_bits(&sl->gb, sps->log2_max_poc_lsb);
- 
+
 @@ -1833,6 +1834,7 @@ static int h264_slice_header_parse(const H264Context *h, H264SliceContext *sl,
          if (pps->pic_order_present == 1 && picture_structure == PICT_FRAME)
              sl->delta_poc[1] = get_se_golomb(&sl->gb);
      }
 +    sl->pic_order_cnt_bit_size = sl->gb.index - pos;
- 
+
      sl->redundant_pic_count = 0;
      if (pps->redundant_pic_cnt_present)
 @@ -1872,9 +1874,11 @@ static int h264_slice_header_parse(const H264Context *h, H264SliceContext *sl,
- 
+
      sl->explicit_ref_marking = 0;
      if (nal->ref_idc) {
 +        pos = sl->gb.index;
@@ -1333,7 +1333,7 @@ index 81f9a74cb629..2b370d18e82d 100644
              return AVERROR_INVALIDDATA;
 +        sl->ref_pic_marking_bit_size = sl->gb.index - pos;
      }
- 
+
      if (sl->slice_type_nos != AV_PICTURE_TYPE_I && pps->cabac) {
 diff --git a/libavcodec/h264dec.h b/libavcodec/h264dec.h
 index 316dc6a2c890..f2cabac468d0 100644
@@ -1344,7 +1344,7 @@ index 316dc6a2c890..f2cabac468d0 100644
      int  nb_mmco;
      int explicit_ref_marking;
 +    int ref_pic_marking_bit_size;
- 
+
      int frame_num;
      int poc_lsb;
 @@ -336,6 +337,7 @@ typedef struct H264SliceContext {
@@ -1353,7 +1353,7 @@ index 316dc6a2c890..f2cabac468d0 100644
      int idr_pic_id;
 +    int pic_order_cnt_bit_size;
  } H264SliceContext;
- 
+
  /**
 
 From bd9786a78eb4c44325caef40305f86b2856ecad4 Mon Sep 17 00:00:00 2001
@@ -1388,10 +1388,10 @@ index 81ee0e740498..0f5b8e355950 100755
  h264_vdpau_hwaccel_deps="vdpau"
 @@ -6567,6 +6569,7 @@ if enabled v4l2_m2m; then
  fi
- 
+
  check_func_headers "linux/media.h linux/videodev2.h" v4l2_timeval_to_ns
 +check_cc h264_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_H264_SLICE;"
- 
+
  check_headers sys/videoio.h
  test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
@@ -1946,11 +1946,11 @@ index 0f5b8e355950..6ed48234dd25 100755
  mpeg2_vaapi_hwaccel_select="mpeg2video_decoder"
  mpeg2_vdpau_hwaccel_deps="vdpau"
 @@ -6570,6 +6572,7 @@ fi
- 
+
  check_func_headers "linux/media.h linux/videodev2.h" v4l2_timeval_to_ns
  check_cc h264_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_H264_SLICE;"
 +check_cc mpeg2_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2_SLICE;"
- 
+
  check_headers sys/videoio.h
  test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
@@ -2202,7 +2202,7 @@ index 6ed48234dd25..a3c724861caa 100755
  check_cc h264_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_H264_SLICE;"
  check_cc mpeg2_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2_SLICE;"
 +check_cc vp8_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_VP8_FRAME;"
- 
+
  check_headers sys/videoio.h
  test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
@@ -2432,7 +2432,7 @@ index e84fcdeaa1e7..0608d9e4e165 100644
 @@ -198,7 +201,7 @@ int update_dimensions(VP8Context *s, int width, int height, int is_vp7)
              return ret;
      }
- 
+
 -    if (!s->actually_webp && !is_vp7) {
 +    if (!s->actually_webp && !is_vp7 && s->pix_fmt == AV_PIX_FMT_NONE) {
          s->pix_fmt = get_pixel_format(s);
@@ -2479,13 +2479,13 @@ index a3c724861caa..94476afd5df1 100755
  hevc_vaapi_hwaccel_select="hevc_decoder"
  hevc_vdpau_hwaccel_deps="vdpau VdpPictureInfoHEVC"
 @@ -6574,6 +6576,7 @@ fi
- 
+
  check_func_headers "linux/media.h linux/videodev2.h" v4l2_timeval_to_ns
  check_cc h264_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_H264_SLICE;"
 +check_cc hevc_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_HEVC_SLICE;"
  check_cc mpeg2_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2_SLICE;"
  check_cc vp8_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_VP8_FRAME;"
- 
+
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
 index c74d2ebfdd23..d6af854daaa6 100644
 --- a/libavcodec/Makefile
@@ -3416,9 +3416,9 @@ index d385c2f03615..ad555c3bb836 100644
  #include "hwconfig.h"
  #include "v4l2_request.h"
 +#include "hevc-ctrls.h"
- 
+
  #define MAX_SLICES 16
- 
+
 
 From 838ed5b6317f13d17b5890d769df325a3aaf0c98 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
@@ -3437,7 +3437,7 @@ index 32cbde82ebfa..aa4794c5e665 100644
 @@ -43,6 +43,11 @@ static int drm_device_create(AVHWDeviceContext *hwdev, const char *device,
      AVDRMDeviceContext *hwctx = hwdev->hwctx;
      drmVersionPtr version;
- 
+
 +    if (device == NULL) {
 +      hwctx->fd = -1;
 +      return 0;
@@ -3476,12 +3476,12 @@ index 53c0038c792b..0e5c4a2eecff 100644
  #define V4L2_CTRL_TYPE_HEVC_SLICE_PARAMS 0x0122
 +#define V4L2_CTRL_TYPE_HEVC_SCALING_MATRIX 0x0123
  #define V4L2_CTRL_TYPE_HEVC_DECODE_PARAMS 0x0124
- 
+
  enum v4l2_mpeg_video_hevc_decode_mode {
 @@ -224,6 +226,15 @@ struct v4l2_ctrl_hevc_decode_params {
  	__u64	flags;
  };
- 
+
 +struct v4l2_ctrl_hevc_scaling_matrix {
 +	__u8	scaling_list_4x4[6][16];
 +	__u8	scaling_list_8x8[6][64];
@@ -3516,10 +3516,10 @@ index ad555c3bb836..b6c191120e44 100644
 +                            sps->scaling_list_enable_flag ?
 +                            &sps->scaling_list : NULL;
      V4L2RequestControlsHEVC *controls = h->ref->hwaccel_picture_private;
- 
+
      fill_sps(&controls->sps, h);
      fill_dec_params(&controls->dec_params, h);
- 
+
 +    if (sl) {
 +        for (int i = 0; i < 6; i++) {
 +            for (int j = 0; j < 16; j++)
@@ -3569,12 +3569,12 @@ index 0e5c4a2eecff..42ad0fe81e66 100644
 +++ b/libavcodec/hevc-ctrls.h
 @@ -198,6 +198,7 @@ struct v4l2_ctrl_hevc_slice_params {
  	__u8	pic_struct;
- 
+
  	/* ISO/IEC 23008-2, ITU-T Rec. H.265: General slice segment header */
 +	__u32	slice_segment_addr;
  	__u8	ref_idx_l0[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
  	__u8	ref_idx_l1[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
- 
+
 diff --git a/libavcodec/v4l2_request_hevc.c b/libavcodec/v4l2_request_hevc.c
 index b6c191120e44..f645c538c25c 100644
 --- a/libavcodec/v4l2_request_hevc.c
@@ -3582,7 +3582,7 @@ index b6c191120e44..f645c538c25c 100644
 @@ -188,6 +188,9 @@ static void v4l2_request_hevc_fill_slice_params(const HEVCContext *h,
          .bit_size = 0,
          .data_bit_offset = get_bits_count(&h->HEVClc->gb),
- 
+
 +        /* ISO/IEC 23008-2, ITU-T Rec. H.265: General slice segment header */
 +        .slice_segment_addr = sh->slice_segment_addr,
 +
@@ -3608,12 +3608,12 @@ index 42ad0fe81e66..a24916603017 100644
 @@ -202,7 +202,9 @@ struct v4l2_ctrl_hevc_slice_params {
  	__u8	ref_idx_l0[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
  	__u8	ref_idx_l1[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
- 
+
 -	__u8	padding[5];
 +	__u32	num_entry_point_offsets;
 +	__u32	entry_point_offset_minus1[256];
 +	__u8	padding[8];
- 
+
  	/* ISO/IEC 23008-2, ITU-T Rec. H.265: Weighted prediction parameter */
  	struct v4l2_hevc_pred_weight_table pred_weight_table;
 diff --git a/libavcodec/v4l2_request_hevc.c b/libavcodec/v4l2_request_hevc.c
@@ -3622,7 +3622,7 @@ index f645c538c25c..601202a77d7a 100644
 +++ b/libavcodec/v4l2_request_hevc.c
 @@ -256,6 +256,15 @@ static void v4l2_request_hevc_fill_slice_params(const HEVCContext *h,
      }
- 
+
      v4l2_request_hevc_fill_pred_table(h, &slice_params->pred_weight_table);
 +
 +    slice_params->num_entry_point_offsets = sh->num_entry_point_offsets;
@@ -3634,7 +3634,7 @@ index f645c538c25c..601202a77d7a 100644
 +    for (i = 0; i < slice_params->num_entry_point_offsets; i++)
 +        slice_params->entry_point_offset_minus1[i] = sh->entry_point_offset[i] - 1;
  }
- 
+
  static void fill_sps(struct v4l2_ctrl_hevc_sps *ctrl, const HEVCContext *h)
 
 From 4c1dd736399c6c4f0dbc5510616b16773b892832 Mon Sep 17 00:00:00 2001
@@ -3671,7 +3671,7 @@ index e90c9b913dcb..33c8ed54679a 100755
  check_cc mpeg2_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2_SLICE;"
  check_cc vp8_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_VP8_FRAME;"
 +check_cc vp9_v4l2_request linux/videodev2.h "int i = V4L2_PIX_FMT_VP9_FRAME;"
- 
+
  check_headers sys/videoio.h
  test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
 diff --git a/libavcodec/Makefile b/libavcodec/Makefile
@@ -4091,7 +4091,7 @@ index fd0bab14a239..434f905c62c5 100644
 @@ -700,7 +707,8 @@ static int decode_frame_header(AVCodecContext *avctx,
                                           get_bits(&s->gb, 8) : 255;
          }
- 
+
 -        if (get_bits1(&s->gb)) {
 +        s->s.h.segmentation.update_data = get_bits1(&s->gb);
 +        if (s->s.h.segmentation.update_data) {
@@ -4156,7 +4156,7 @@ index 4074c7fe4b8e..2e10b7ad1acb 100644
  #include "v4l2_request.h"
  #include "vp9dec.h"
 +#include "vp9-ctrls.h"
- 
+
  typedef struct V4L2RequestControlsVP9 {
      struct v4l2_ctrl_vp9_frame_decode_params decode_params;
 diff --git a/libavcodec/vp9-ctrls.h b/libavcodec/vp9-ctrls.h
@@ -4712,7 +4712,7 @@ index 5234b5049b0d..0b294feff2eb 100644
 +    V4L2_PIX_FMT_NV20,
 +#endif
  };
- 
+
  static int v4l2_request_set_drm_descriptor(V4L2RequestDescriptor *req, struct v4l2_format *format)
 @@ -206,6 +213,22 @@ static int v4l2_request_set_drm_descriptor(V4L2RequestDescriptor *req, struct v4
          layer->format = DRM_FORMAT_NV12;
@@ -4754,7 +4754,7 @@ index 0b294feff2eb..a8f0ee79eeef 100644
 @@ -30,6 +30,14 @@
  #include "internal.h"
  #include "v4l2_request.h"
- 
+
 +#ifndef DRM_FORMAT_NV15
 +#define DRM_FORMAT_NV15 fourcc_code('N', 'V', '1', '5')
 +#endif
@@ -4794,15 +4794,15 @@ index a24916603017..cd143526685f 100644
 @@ -81,6 +83,9 @@ struct v4l2_ctrl_hevc_sps {
  	__u8	chroma_format_idc;
  	__u8	sps_max_sub_layers_minus1;
- 
+
 +	__u8	num_slices;
 +	__u8	padding[5];
 +
  	__u64	flags;
  };
- 
+
 @@ -108,6 +113,7 @@ struct v4l2_ctrl_hevc_sps {
- 
+
  struct v4l2_ctrl_hevc_pps {
  	/* ISO/IEC 23008-2, ITU-T Rec. H.265: Picture parameter set */
 +	__u8	pic_parameter_set_id;
@@ -4812,19 +4812,19 @@ index a24916603017..cd143526685f 100644
 @@ -123,7 +129,7 @@ struct v4l2_ctrl_hevc_pps {
  	__s8	pps_tc_offset_div2;
  	__u8	log2_parallel_merge_level_minus2;
- 
+
 -	__u8	padding[4];
 +	__u8	padding;
  	__u64	flags;
  };
- 
+
 @@ -202,6 +208,9 @@ struct v4l2_ctrl_hevc_slice_params {
  	__u8	ref_idx_l0[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
  	__u8	ref_idx_l1[V4L2_HEVC_DPB_ENTRIES_NUM_MAX];
- 
+
 +	__u16	short_term_ref_pic_set_size;
 +	__u16	long_term_ref_pic_set_size;
-+	
++
  	__u32	num_entry_point_offsets;
  	__u32	entry_point_offset_minus1[256];
  	__u8	padding[8];
@@ -4833,21 +4833,21 @@ index 601202a77d7a..be7838244447 100644
 --- a/libavcodec/v4l2_request_hevc.c
 +++ b/libavcodec/v4l2_request_hevc.c
 @@ -214,6 +214,9 @@ static void v4l2_request_hevc_fill_slice_params(const HEVCContext *h,
- 
+
          /* ISO/IEC 23008-2, ITU-T Rec. H.265: Picture timing SEI message */
          .pic_struct = h->sei.picture_timing.picture_struct,
 +
 +        .short_term_ref_pic_set_size = sh->short_term_ref_pic_set_size,
 +        .long_term_ref_pic_set_size = sh->long_term_ref_pic_set_size,
      };
- 
+
      if (sh->slice_sample_adaptive_offset_flag[0])
 @@ -270,9 +273,12 @@ static void v4l2_request_hevc_fill_slice_params(const HEVCContext *h,
  static void fill_sps(struct v4l2_ctrl_hevc_sps *ctrl, const HEVCContext *h)
  {
      const HEVCSPS *sps = h->ps.sps;
 +    const HEVCPPS *pps = h->ps.pps;
- 
+
      /* ISO/IEC 23008-2, ITU-T Rec. H.265: Sequence parameter set */
      *ctrl = (struct v4l2_ctrl_hevc_sps) {
 +        .video_parameter_set_id = sps->vps_id,
@@ -4861,10 +4861,10 @@ index 601202a77d7a..be7838244447 100644
                              &sps->scaling_list : NULL;
 +    const SliceHeader *sh = &h->sh;
      V4L2RequestControlsHEVC *controls = h->ref->hwaccel_picture_private;
- 
+
      fill_sps(&controls->sps, h);
 @@ -359,6 +366,9 @@ static int v4l2_request_hevc_start_frame(AVCodecContext *avctx,
- 
+
      /* ISO/IEC 23008-2, ITU-T Rec. H.265: Picture parameter set */
      controls->pps = (struct v4l2_ctrl_hevc_pps) {
 +        .pic_parameter_set_id = sh->pps_id,
@@ -4876,9 +4876,46 @@ index 601202a77d7a..be7838244447 100644
 @@ -488,6 +498,8 @@ static int v4l2_request_hevc_queue_decode(AVCodecContext *avctx, int last_slice)
      if (ctx->decode_mode == V4L2_MPEG_VIDEO_HEVC_DECODE_MODE_SLICE_BASED)
          return ff_v4l2_request_decode_slice(avctx, h->ref->frame, control, FF_ARRAY_ELEMS(control), controls->first_slice, last_slice);
- 
+
 +    controls->sps.num_slices = controls->num_slices;
 +
      return ff_v4l2_request_decode_frame(avctx, h->ref->frame, control, FF_ARRAY_ELEMS(control));
  }
- 
+
+
+From dec361c86ab63081e9d1eb0ea4a143ec500c0cf9 Mon Sep 17 00:00:00 2001
+From: Jernej Skrabec <jernej.skrabec@gmail.com>
+Date: Sun, 25 Jul 2021 08:40:58 +0200
+Subject: [PATCH 23/23] WIP: hevc: Align naming with mainline
+
+---
+ libavcodec/hevc-ctrls.h        | 2 +-
+ libavcodec/v4l2_request_hevc.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libavcodec/hevc-ctrls.h b/libavcodec/hevc-ctrls.h
+index c54687bfe658..10a4296ac219 100644
+--- a/libavcodec/hevc-ctrls.h
++++ b/libavcodec/hevc-ctrls.h
+@@ -86,7 +86,7 @@ struct v4l2_ctrl_hevc_sps {
+ 	__u64	flags;
+ };
+
+-#define V4L2_HEVC_PPS_FLAG_DEPENDENT_SLICE_SEGMENT		(1ULL << 0)
++#define V4L2_HEVC_PPS_FLAG_DEPENDENT_SLICE_SEGMENT_ENABLED	(1ULL << 0)
+ #define V4L2_HEVC_PPS_FLAG_OUTPUT_FLAG_PRESENT			(1ULL << 1)
+ #define V4L2_HEVC_PPS_FLAG_SIGN_DATA_HIDING_ENABLED		(1ULL << 2)
+ #define V4L2_HEVC_PPS_FLAG_CABAC_INIT_PRESENT			(1ULL << 3)
+diff --git a/libavcodec/v4l2_request_hevc.c b/libavcodec/v4l2_request_hevc.c
+index eb493b309fe9..c5ecd12ec235 100644
+--- a/libavcodec/v4l2_request_hevc.c
++++ b/libavcodec/v4l2_request_hevc.c
+@@ -350,7 +350,7 @@ static int v4l2_request_hevc_start_frame(AVCodecContext *avctx,
+     };
+
+     if (pps->dependent_slice_segments_enabled_flag)
+-        controls->pps.flags |= V4L2_HEVC_PPS_FLAG_DEPENDENT_SLICE_SEGMENT;
++        controls->pps.flags |= V4L2_HEVC_PPS_FLAG_DEPENDENT_SLICE_SEGMENT_ENABLED;
+
+     if (pps->output_flag_present_flag)
+         controls->pps.flags |= V4L2_HEVC_PPS_FLAG_OUTPUT_FLAG_PRESENT;

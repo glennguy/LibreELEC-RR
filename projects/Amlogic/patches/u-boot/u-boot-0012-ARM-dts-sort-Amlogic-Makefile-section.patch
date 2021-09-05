@@ -1,0 +1,56 @@
+From 5183734648e40648000d883a93d55822b8655815 Mon Sep 17 00:00:00 2001
+From: Christian Hewitt <christianshewitt@gmail.com>
+Date: Fri, 6 Aug 2021 14:48:02 +0000
+Subject: [PATCH 12/14] ARM: dts: sort Amlogic Makefile section
+
+Reorder the Amlogic dtb list.
+
+Signed-off-by: Christian Hewitt <christianshewitt@gmail.com>
+---
+ arch/arm/dts/Makefile | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 10de458da7..5c89d8a05d 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -154,6 +154,7 @@ dtb-$(CONFIG_ARCH_S5P4418) += \
+ 	s5p4418-nanopi2.dtb
+ 
+ dtb-$(CONFIG_ARCH_MESON) += \
++	meson-axg-s400.dtb \
+ 	meson-gxbb-nanopi-k2.dtb \
+ 	meson-gxbb-odroidc2.dtb \
+ 	meson-gxbb-nanopi-k2.dtb \
+@@ -161,23 +162,22 @@ dtb-$(CONFIG_ARCH_MESON) += \
+ 	meson-gxbb-p201.dtb \
+ 	meson-gxbb-wetek-hub.dtb \
+ 	meson-gxbb-wetek-play2.dtb \
+-	meson-gxl-s905x-p212.dtb \
+ 	meson-gxl-s805x-libretech-ac.dtb \
++	meson-gxl-s905d-libretech-pc.dtb \
++	meson-gxl-s905x-khadas-vim.dtb \
+ 	meson-gxl-s905x-libretech-cc.dtb \
+ 	meson-gxl-s905x-libretech-cc-v2.dtb \
+-	meson-gxl-s905x-khadas-vim.dtb \
+-	meson-gxl-s905d-libretech-pc.dtb \
++	meson-gxl-s905x-p212.dtb \
+ 	meson-gxm-khadas-vim2.dtb \
+ 	meson-gxm-s912-libretech-pc.dtb \
+ 	meson-gxm-wetek-core2.dtb \
+-	meson-axg-s400.dtb \
+-	meson-g12a-u200.dtb \
+ 	meson-g12a-sei510.dtb \
++	meson-g12a-u200.dtb \
++	meson-g12b-a311d-khadas-vim3.dtb \
+ 	meson-g12b-gtking.dtb \
+ 	meson-g12b-gtking-pro.dtb \
+ 	meson-g12b-odroid-n2.dtb \
+ 	meson-g12b-odroid-n2-plus.dtb \
+-	meson-g12b-a311d-khadas-vim3.dtb \
+ 	meson-sm1-khadas-vim3l.dtb \
+ 	meson-sm1-odroid-c4.dtb \
+ 	meson-sm1-sei610.dtb
+-- 
+2.17.1
+

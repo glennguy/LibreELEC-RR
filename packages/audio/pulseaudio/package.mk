@@ -3,8 +3,8 @@
 # Copyright (C) 2016-present Team LibreELEC (https://libreelec.tv)
 
 PKG_NAME="pulseaudio"
-PKG_VERSION="14.2"
-PKG_SHA256="75d3f7742c1ae449049a4c88900e454b8b350ecaa8c544f3488a2562a9ff66f1"
+PKG_VERSION="15.0"
+PKG_SHA256="a40b887a3ba98cc26976eb11bdb6613988f145b19024d1b6555c6a03c9cba1a0"
 PKG_LICENSE="GPL"
 PKG_SITE="http://pulseaudio.org/"
 PKG_URL="http://www.freedesktop.org/software/pulseaudio/releases/${PKG_NAME}-${PKG_VERSION}.tar.xz"
@@ -13,10 +13,10 @@ PKG_LONGDESC="PulseAudio is a sound system for POSIX OSes, meaning that it is a 
 PKG_TOOLCHAIN="meson"
 
 if [ "${BLUETOOTH_SUPPORT}" = "yes" ]; then
-  PKG_DEPENDS_TARGET+=" sbc"
-  PKG_PULSEAUDIO_BLUETOOTH="-Dbluez5=true"
+  PKG_DEPENDS_TARGET+=" bluez sbc"
+  PKG_PULSEAUDIO_BLUETOOTH="-Dbluez5=enabled"
 else
-  PKG_PULSEAUDIO_BLUETOOTH="-Dbluez5=false"
+  PKG_PULSEAUDIO_BLUETOOTH="-Dbluez5=disabled"
 fi
 
 if [ "${AVAHI_DAEMON}" = "yes" ]; then
@@ -32,6 +32,7 @@ PKG_MESON_OPTS_TARGET="-Dgcov=false \
                        -Dsystem_user=root \
                        -Dsystem_group=root \
                        -Daccess_group=root \
+                       -Ddoxygen=false \
                        -Ddatabase=simple \
                        -Dlegacy-database-entry-format=false \
                        -Drunning-from-build-tree=false \
